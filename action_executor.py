@@ -31,17 +31,15 @@ class ActionExecutor:
         except Exception as e:
             logger.error(f"Error saving config: {e}")
 
-    def execute(self, col: int, row: int):
-        """Execute the action mapped to the specific column and row."""
-        key_id = f"{col}_{row}"
-        action_def = self.config.get(key_id)
-        
-        if not action_def:
-            logger.debug(f"No action configured for {key_id}")
+    def execute(self, key: str, page_config: dict):
+        """Executes the action configured for the given key string (e.g. '0_0')."""
+        action = page_config.get(key)
+        if not action:
+            logger.info(f"No action configured for {key}")
             return
             
-        action_type = action_def.get("type")
-        payload = action_def.get("payload")
+        action_type = action.get("type")
+        payload = action.get("payload")
         
         try:
             if action_type == "open_app":

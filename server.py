@@ -9,6 +9,7 @@ import io
 import plistlib
 import base64
 import uuid
+import json
 from PIL import Image
 
 from waveshare_controller import WaveshareController, get_mac_app_icon_bytes
@@ -35,18 +36,35 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 controller = WaveshareController()
 executor = ActionExecutor()
 
-def on_key_event(col: int, row: int, pressed: bool):
-    if pressed:
-        logger.info(f"Key Pressed: {col}, {row}")
-        executor.execute(col, row)
+def key_handler(c, r, pressed):
+    if not pressed:
+        return
+    logger.info(f"Key Pressed: {c}, {r}")
+    page_config = controller.config.get("pages", {}).get(controller.current_page, {})
+    action = page_config.get(f"{c}_{r}")
+    if action:
+        if action.get("type") == "switch_page":
+            target = action.get("payload")
+            if target and target in controller.config.get("pages", {}):
+                controller.current_page = target
+                controller.render_screen(controller.config)
+        else:
+            # We pass the single action to executor since executor doesn't need to know pagination
+            executor.execute(f"{c}_{r}", page_config)
 
-def on_device_connected():
+controller.on_key_state_changed = key_handler
+
+def on_connected():
     logger.info("Device connected, re-rendering screen with correct dimensions...")
-    controller.render_screen(executor.config)
-    controller.send_jpg_frame()
+    # Read config to get full dict
+    try:
+        with open('config.json', 'r') as f:
+            config = json.load(f)
+            controller.render_screen(config)
+    except:
+        pass
 
-controller.on_key_state_changed = on_key_event
-controller.on_connected = on_device_connected
+controller.on_connected = on_connected
 
 @app.on_event("startup")
 def startup_event():
@@ -68,16 +86,46 @@ class ActionRequest(BaseModel):
 
 @app.get("/api/config")
 def get_config():
-    return executor.config
+    if not os.path.exists('config.json'):
+        return {"pages": {"main": {}}, "settings": {"brightness": 50}}
+    with open('config.json', 'r') as f:
+        config = json.load(f)
+        # Migration from v1 to v2
+        if "pages" not in config:
+            migrated = {
+                "pages": {
+                    "main": config
+                },
+                "settings": {
+                    "brightness": 50
+                }
+            }
+            with open('config.json', 'w') as out:
+                json.dump(migrated, out, indent=4)
+            return migrated
+        return config
 
 @app.post("/api/config")
-def set_config(req: ActionRequest):
-    executor.set_action(req.col, req.row, req.action_type, req.payload, req.image_path)
-    # Render the new configuration into the cached JPG buffer
-    controller.render_screen(executor.config)
-    # Send the updated frame immediately
-    controller.send_jpg_frame()
+def set_config(req: dict):
+    with open('config.json', 'w') as f:
+        json.dump(req, f, indent=4)
+        
+    # Update brightness if changed
+    if "settings" in req and "brightness" in req["settings"]:
+        controller.set_brightness(req["settings"]["brightness"])
+        
+    controller.render_screen(req)
+    executor.config = req # In case it needs it, though it uses page_config now
     return {"status": "success"}
+
+@app.get("/api/layout")
+def get_layout():
+    return {
+        "width": controller.device_width,
+        "height": controller.device_height,
+        "rects": controller.raw_rects,
+        "model": controller.device_model
+    }
 
 @app.post("/api/brightness")
 def set_brightness(level: int):
@@ -130,11 +178,9 @@ def upload_base64(req: Base64Upload):
         with open(file_path, "wb") as f:
             f.write(data)
             
-        # Ensure we send absolute paths or stable paths for the config.
-        # But wait, config should use absolute paths?
-        # Using absolute paths is safer for the python backend, but we can also use relative.
-        abs_path = os.path.abspath(file_path)
-        return {"path": abs_path}
+        # Return the web-accessible path so the browser can preview it immediately
+        web_path = f"/static/uploads/{filename}"
+        return {"path": web_path}
     except Exception as e:
         logger.error(f"Upload error: {e}")
         raise HTTPException(status_code=400, detail="Invalid image data")

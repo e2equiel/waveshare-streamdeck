@@ -68,16 +68,20 @@ class WaveshareController:
         self.read_thread = None
         
         # Callbacks
+        self.on_key_pressed: Optional[Callable[[int, int], None]] = None
         self.on_key_state_changed: Callable[[int, int, bool], None] = None
-        self.on_connected: Callable[[], None] = None
+        self.on_connected: Optional[Callable[[], None]] = None
         self.on_disconnected: Callable[[], None] = None
         
         self.device_model = "Unknown"
         self.device_width = 1024 # Default guess, will update on getInfo
         self.device_height = 600
         self.button_rects = {}
+        self.raw_rects = []
         
         self.cached_jpg = None
+        self.config = {}
+        self.current_page = "main"
 
     def get_available_ports(self):
         """Find the device automatically based on known PIDs/VIDs."""
@@ -153,20 +157,34 @@ class WaveshareController:
         })
 
     def render_screen(self, config: dict):
-        """Composites all button images onto a single fullscreen image and caches the JPEG."""
+        """Composites all elements onto a single fullscreen image and caches the JPEG."""
         try:
+            self.config = config
             # Create a black background
             screen = Image.new('RGB', (self.device_width, self.device_height), color=(0, 0, 0))
             
-            for key, action in config.items():
+            # Render elements for current page
+            page_config = config.get("pages", {}).get(self.current_page, {})
+            
+            for key, action in page_config.items():
                 if not action.get("image"):
                     continue
                 try:
-                    parts = key.split('_')
-                    c, r = int(parts[0]), int(parts[1])
+                    # Find rect. Key can be "c_r" (button) or "extra_X" (non-button rects)
+                    rect = None
+                    if "_" in key and key.split("_")[0].isdigit():
+                        c, r = int(key.split('_')[0]), int(key.split('_')[1])
+                        rect = self.button_rects.get((c, r))
+                    else:
+                        # Extra rects (e.g. clock) matching the key
+                        for r in self.raw_rects:
+                            if not r.get("isKey"):
+                                # we need a way to map them. Let's assume frontend sets key as "extra_{index}"
+                                # but for now let's just find by exact index if possible
+                                if f"extra_{self.raw_rects.index(r)}" == key:
+                                    rect = r
+                                    break
                     
-                    # Get exact physical coordinates reported by the device
-                    rect = self.button_rects.get((c, r))
                     if not rect:
                         continue
                         
@@ -203,6 +221,9 @@ class WaveshareController:
             screen.save(buf, format='JPEG', quality=95)
             self.cached_jpg = buf.getvalue()
             logger.info("Screen rendered and cached successfully.")
+            
+            # Iniciar inmediatamente el envío del frame al dispositivo
+            self.send_jpg_frame()
         except Exception as e:
             logger.error(f"Error rendering screen: {e}")
 
@@ -255,15 +276,16 @@ class WaveshareController:
                 
                 # Extract physical button layout
                 panel = res.get("devicePanel", {})
-                rects = panel.get("rects", [])
-                for r in rects:
+                self.raw_rects = panel.get("rects", [])
+                self.button_rects.clear()
+                for r in self.raw_rects:
                     if r.get("isKey"):
                         c = r.get("col", -1)
                         row = r.get("row", -1)
                         if c >= 0 and row >= 0:
                             self.button_rects[(c, row)] = r
                             
-                logger.info(f"Connected to {self.device_model} ({self.device_width}x{self.device_height}) with {len(self.button_rects)} buttons.")
+                logger.info(f"Connected to {self.device_model} ({self.device_width}x{self.device_height}) with {len(self.button_rects)} buttons and {len(self.raw_rects)-len(self.button_rects)} extra displays.")
                 if self.on_connected:
                     self.on_connected()
                 

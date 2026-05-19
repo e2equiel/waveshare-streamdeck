@@ -1,32 +1,33 @@
-# Contexto del Proyecto: Waveshare Stream Deck Controller
+# Project Context: Waveshare Stream Deck Controller
 
-**Objetivo:** Este repositorio contiene una re-implementación completa y nativa en Python del software de control para el "Waveshare Stream Deck 10", diseñado originalmente solo para Windows mediante una aplicación Qt C++. Ahora cuenta con una arquitectura de backend en Python y un frontend web, altamente optimizado para integrarse de forma nativa con macOS.
+**Objective:** This repository contains a complete, native Python re-implementation of the control software for the "Waveshare Stream Deck 10", originally designed only for Windows using a Qt C++ application. It now features a Python backend architecture and a web frontend, highly optimized for native integration with macOS.
 
-## Arquitectura
+## Architecture
 
-- **Motor de Hardware (`waveshare_controller.py` & `waveshare_protocol.py`):**
-  - Implementa el protocolo serial binario de Waveshare, incluyendo el cálculo de CRC32 (Poly `0x04C11DB7`) y el framing de paquetes (`A1 A5 5A 5E`).
-  - Escucha un endpoint CDC Serial (`/dev/cu.usbmodem...`) de forma asíncrona mediante threads.
-  - Genera frames JPEG (`CMD_VALUE_SHOW_JPG`) de la pantalla entera usando `Pillow`. Lee dinámicamente el layout físico de los botones desde el comando de inicialización (`getInfo`), garantizando un encuadre preciso sin solapamiento en las ventanas transparentes de los botones.
+- **Hardware Engine (`waveshare_controller.py` & `waveshare_protocol.py`):**
+  - Implements the Waveshare binary serial protocol, including CRC32 calculation (Poly `0x04C11DB7`) and packet framing (`A1 A5 5A 5E`).
+  - Listens to a CDC Serial endpoint (`/dev/cu.usbmodem...`) asynchronously via threads.
+  - Generates full-screen JPEG frames (`CMD_VALUE_SHOW_JPG`) using `Pillow`. It dynamically reads the physical button layout from the initialization command (`getInfo`), ensuring precise framing without overlap on the transparent button windows.
 
-- **Servidor Web (`server.py`):**
-  - Construido con **FastAPI**.
-  - Expone endpoints para el frontend (`/api/config`, `/api/apps`, `/api/app_icon`, `/api/upload_base64`).
-  - Utiliza **`sips`** (herramienta nativa de macOS) a través de `subprocess` para extraer con 100% de eficacia los iconos incrustados de las apps de Mac (`.icns` a `.png`), ya que las implementaciones puras de Python fallan en apps modernas o vacías como Calendar.app.
+- **Web Server (`server.py`):**
+  - Built with **FastAPI**.
+  - Exposes endpoints for the frontend (`/api/config`, `/api/apps`, `/api/app_icon`, `/api/upload_base64`, `/api/layout`).
+  - Uses **`sips`** (native macOS tool) via `subprocess` to extract embedded Mac app icons (`.icns` to `.png`) with 100% reliability, since pure Python implementations fail on modern or empty apps like Calendar.app.
 
-- **Ejecutor de Acciones (`action_executor.py`):**
-  - Maneja macros de teclado usando `pyautogui` y ejecución de scripts/comandos vía `subprocess`.
+- **Action Executor (`action_executor.py`):**
+  - Handles keyboard macros using `pyautogui` and executes scripts/commands via `subprocess`.
 
 - **Frontend (`static/index.html`, `app.js`, `style.css`):**
-  - UI interactiva para asignar imágenes y comandos a cada botón de la cuadrícula.
-  - Implementa un menú dinámico de aplicaciones leyendo `/Applications`.
-  - Integra **Cropper.js** para recorte avanzado de imágenes vía Drag & Drop, enviándolas en Base64 al servidor.
-  - Implementa "cache busting" (`?t=timestamp`) agresivo para evitar fallos de lectura en iconos fallidos anteriores.
+  - Interactive WYSIWYG UI to assign images and commands to each layout element.
+  - Implements a dynamic application menu reading from `/Applications`.
+  - Integrates **Cropper.js** for advanced image cropping via Drag & Drop, sending them in Base64 to the server.
+  - Implements aggressive cache busting (`?t=timestamp`) to prevent read failures on previously broken icons.
 
-## Reglas y Consideraciones para futuros Agentes AI
+## Rules and Considerations for Future AI Agents
 
-1. **Protocolo:** No modificar `waveshare_protocol.py` a menos que sea estrictamente necesario. Las cabeceras y el algoritmo CRC32 son muy sensibles y exactos.
-2. **Crop de Imágenes:** Se utiliza `ImageOps.fit(..., centering=(0.5, 0.5))` en lugar de `resize` para no distorsionar las imágenes PNG/JPEG cargadas.
-3. **Manejo de Íconos de Mac:** Nunca intentar leer un `.icns` nativamente usando la librería `Pillow` en este proyecto, siempre usar el wrapper de `sips` que provee `get_mac_app_icon_bytes` para garantizar su correcta conversión a formato PNG en un buffer.
-4. **Logs y Rendimiento:** El dispositivo solicita un frame JPG docenas de veces por segundo (`SHOW_JPG`). Nunca usar log level `DEBUG` de forma generalizada en `waveshare_controller.py`, ya que satura la terminal y ralentiza el motor serial. Mantener log level en `INFO` o `WARNING`.
-5. **Estado del Servidor:** Siempre tener en cuenta que las variables y el estado del `serial_port` son persistentes. Detener adecuadamente el hilo con `.stop()` antes de liberar recursos.
+1. **Protocol:** Do not modify `waveshare_protocol.py` unless strictly necessary. The headers and CRC32 algorithm are highly sensitive and exact.
+2. **Image Cropping:** Use `ImageOps.fit(..., centering=(0.5, 0.5))` instead of `resize` to avoid distorting loaded PNG/JPEG images.
+3. **Mac Icon Handling:** Never attempt to read an `.icns` natively using the `Pillow` library in this project; always use the `sips` wrapper provided by `get_mac_app_icon_bytes` to guarantee correct conversion to PNG format in a buffer.
+4. **Logs and Performance:** The device requests a JPG frame dozens of times per second (`SHOW_JPG`). Never use `DEBUG` log level globally in `waveshare_controller.py`, as it saturates the terminal and slows down the serial engine. Keep log level at `INFO` or `WARNING`.
+5. **Server State:** Always keep in mind that variables and `serial_port` state are persistent. Properly stop the thread with `.stop()` before releasing resources.
+6. **WiFi:** The factory firmware does not support WiFi. It is strictly CDC Serial over USB. Any future WiFi support will require flashing custom firmware to the ESP32.
