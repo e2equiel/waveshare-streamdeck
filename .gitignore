@@ -15,3 +15,5 @@ env/
 
 # Local files
 config.json
+streamdeck_debug.log
+static/uploads/

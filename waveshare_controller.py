@@ -6,12 +6,56 @@ import json
 import logging
 from PIL import Image
 import io
+import os
+import plistlib
+import subprocess
+import tempfile
 from typing import Callable, Optional
 
 from waveshare_protocol import pack_json, pack_jpg, StreamDeckParser, CmdValue
 
-logging.basicConfig(level=logging.INFO)
+# Set up logging
 logger = logging.getLogger("WaveshareController")
+# Set to INFO to avoid spamming the console with SHOW_JPG debug logs
+logger.setLevel(logging.INFO)
+
+def get_mac_app_icon_bytes(app_path: str) -> bytes:
+    """Uses macOS sips to convert the app's .icns to PNG bytes."""
+    plist_path = os.path.join(app_path, 'Contents', 'Info.plist')
+    icon_file = "AppIcon.icns"
+    if os.path.exists(plist_path):
+        try:
+            with open(plist_path, 'rb') as f:
+                pl = plistlib.load(f)
+                icon_file = pl.get('CFBundleIconFile', icon_file)
+                if not icon_file.endswith('.icns'): icon_file += '.icns'
+        except: pass
+    
+    # Special cases
+    if "Calendar.app" in app_path:
+        icon_file = "App-empty.icns"
+
+    full_path = os.path.join(app_path, 'Contents', 'Resources', icon_file)
+    if not os.path.exists(full_path):
+        import glob
+        found = glob.glob(os.path.join(app_path, 'Contents', 'Resources', '*.icns'))
+        if found: full_path = found[0]
+        else: return b""
+        
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
+        temp_path = tf.name
+        
+    try:
+        subprocess.run(["sips", "-s", "format", "png", full_path, "--out", temp_path], check=True, capture_output=True)
+        with open(temp_path, "rb") as f:
+            data = f.read()
+        return data
+    except Exception as e:
+        logger.error(f"sips failed for {full_path}: {e}")
+        return b""
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
 class WaveshareController:
     def __init__(self, port_name: Optional[str] = None):
@@ -29,8 +73,11 @@ class WaveshareController:
         self.on_disconnected: Callable[[], None] = None
         
         self.device_model = "Unknown"
-        self.device_width = 120
-        self.device_height = 120
+        self.device_width = 1024 # Default guess, will update on getInfo
+        self.device_height = 600
+        self.button_rects = {}
+        
+        self.cached_jpg = None
 
     def get_available_ports(self):
         """Find the device automatically based on known PIDs/VIDs."""
@@ -105,49 +152,67 @@ class WaveshareController:
             "parameters": {"level": max(0, min(100, level))}
         })
 
-    def send_image(self, image_path: str, col: int, row: int):
-        """Load an image, resize it to fit one button, and send it."""
+    def render_screen(self, config: dict):
+        """Composites all button images onto a single fullscreen image and caches the JPEG."""
         try:
-            with Image.open(image_path) as img:
-                # The hardware expects images to be rendered to specific screen coordinates.
-                # In the original demo, they just take a screenshot of a specific widget region.
-                # Usually, stream decks have individual screens per button, or one big screen where we draw at specific x, y.
-                # Assuming one big screen for now, we'd need the exact screen layout if it's a single screen.
-                # Wait, the demo sends CMD_VALUE_SHOW_JPG with a FULL screen snapshot. 
-                # "jpgData = captureRegionToJpegByteArray(QRect(x, y, property("deviceWidth"), property("deviceHeight")))"
-                # This means it sends ONE large JPEG for the entire screen, not per button!
-                
-                # We should resize the image to exactly device_width x device_height
-                img = img.convert('RGB')
-                if img.size != (self.device_width, self.device_height):
-                    img = img.resize((self.device_width, self.device_height), Image.Resampling.LANCZOS)
-                
-                buf = io.BytesIO()
-                img.save(buf, format='JPEG', quality=95)
-                jpg_data = buf.getvalue()
-                
-                pkt = pack_jpg(jpg_data, self._get_next_id())
-                if self.serial_port and self.serial_port.is_open:
-                    self.serial_port.write(pkt)
-        except Exception as e:
-            logger.error(f"Error sending image {image_path}: {e}")
-
-    def send_full_screen_image_data(self, img: Image.Image):
-        """Sends an already composited full screen image."""
-        try:
-            img = img.convert('RGB')
-            if img.size != (self.device_width, self.device_height):
-                img = img.resize((self.device_width, self.device_height), Image.Resampling.LANCZOS)
+            # Create a black background
+            screen = Image.new('RGB', (self.device_width, self.device_height), color=(0, 0, 0))
+            
+            for key, action in config.items():
+                if not action.get("image"):
+                    continue
+                try:
+                    parts = key.split('_')
+                    c, r = int(parts[0]), int(parts[1])
+                    
+                    # Get exact physical coordinates reported by the device
+                    rect = self.button_rects.get((c, r))
+                    if not rect:
+                        continue
+                        
+                    w, h = rect["width"], rect["height"]
+                    x, y = rect["x"], rect["y"]
+                    
+                    img_path = action["image"]
+                    icon = None
+                    
+                    import urllib.parse
+                    if img_path.startswith('/api/app_icon?app_path='):
+                        app_path = urllib.parse.unquote(img_path.split('app_path=')[1])
+                        icon_bytes = get_mac_app_icon_bytes(app_path)
+                        if icon_bytes:
+                            icon = Image.open(io.BytesIO(icon_bytes))
+                    elif img_path.startswith('/static/uploads/'):
+                        full_path = os.path.abspath(img_path.lstrip('/'))
+                        if os.path.exists(full_path):
+                            icon = Image.open(full_path)
+                    elif os.path.exists(img_path):
+                        icon = Image.open(img_path)
+                        
+                    if icon:
+                        icon = icon.convert('RGB')
+                        # Exact size of the transparent window, with center crop to preserve aspect ratio
+                        from PIL import ImageOps
+                        icon = ImageOps.fit(icon, (w, h), Image.Resampling.LANCZOS, centering=(0.5, 0.5))
+                        screen.paste(icon, (x, y))
+                        
+                except Exception as e:
+                    logger.error(f"Failed to render icon for {key}: {e}")
             
             buf = io.BytesIO()
-            img.save(buf, format='JPEG', quality=95)
-            jpg_data = buf.getvalue()
-            
-            pkt = pack_jpg(jpg_data, self._get_next_id())
-            if self.serial_port and self.serial_port.is_open:
-                self.serial_port.write(pkt)
+            screen.save(buf, format='JPEG', quality=95)
+            self.cached_jpg = buf.getvalue()
+            logger.info("Screen rendered and cached successfully.")
         except Exception as e:
-            logger.error(f"Error sending composited image: {e}")
+            logger.error(f"Error rendering screen: {e}")
+
+    def send_jpg_frame(self):
+        """Sends the current cached JPG to kickstart the video stream."""
+        if self.cached_jpg and self.serial_port and self.serial_port.is_open:
+            new_id = self._get_next_id()
+            logger.debug(f"Sending JPG frame (size {len(self.cached_jpg)}) with new id {new_id}")
+            pkt = pack_jpg(self.cached_jpg, new_id)
+            self.serial_port.write(pkt)
 
     def _read_loop(self):
         while self.running and self.serial_port and self.serial_port.is_open:
@@ -162,7 +227,16 @@ class WaveshareController:
         self.disconnect()
 
     def _handle_packet(self, pkt_id: int, cmd: int, payload: bytes):
-        if cmd == CmdValue.JSON:
+        if cmd == CmdValue.SHOW_JPG:
+            logger.debug(f"Received SHOW_JPG request with id {pkt_id}")
+            if self.cached_jpg and self.serial_port and self.serial_port.is_open:
+                new_id = self._get_next_id()
+                logger.debug(f"Sending JPG frame (size {len(self.cached_jpg)}) with new id {new_id}")
+                pkt = pack_jpg(self.cached_jpg, new_id)
+                self.serial_port.write(pkt)
+            else:
+                logger.debug("Ignored SHOW_JPG (cached_jpg is None or port closed).")
+        elif cmd == CmdValue.JSON:
             try:
                 data_dict = json.loads(payload.decode('utf-8'))
                 self._handle_json(data_dict)
@@ -170,6 +244,7 @@ class WaveshareController:
                 logger.error(f"Failed to decode JSON: {payload}")
                 
     def _handle_json(self, data: dict):
+        logger.debug(f"Received JSON: {data}")
         # Handle responses to our commands
         if "ack_method" in data:
             if data["ack_method"] == "getInfo" and data.get("success"):
@@ -177,7 +252,20 @@ class WaveshareController:
                 self.device_model = res.get("deviceModel", self.device_model)
                 self.device_width = res.get("deviceWidth", self.device_width)
                 self.device_height = res.get("deviceHeight", self.device_height)
-                logger.info(f"Connected to {self.device_model} ({self.device_width}x{self.device_height})")
+                
+                # Extract physical button layout
+                panel = res.get("devicePanel", {})
+                rects = panel.get("rects", [])
+                for r in rects:
+                    if r.get("isKey"):
+                        c = r.get("col", -1)
+                        row = r.get("row", -1)
+                        if c >= 0 and row >= 0:
+                            self.button_rects[(c, row)] = r
+                            
+                logger.info(f"Connected to {self.device_model} ({self.device_width}x{self.device_height}) with {len(self.button_rects)} buttons.")
+                if self.on_connected:
+                    self.on_connected()
                 
         # Handle events from device
         if "method" in data and data["method"] == "keyStateChanged":

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stream Deck Config</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
@@ -29,18 +30,45 @@
                         <option value="shell">Comando Terminal</option>
                     </select>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="appSelectGroup" style="display: none;">
+                    <label>Seleccionar Aplicación</label>
+                    <select id="appSelect">
+                        <option value="">Cargando apps...</option>
+                    </select>
+                </div>
+                <div class="form-group" id="payloadGroup">
                     <label>Valor (App name, keys...)</label>
                     <input type="text" id="actionPayload" placeholder="ej. Spotify o ['command', 'm']">
                 </div>
                 <div class="form-group">
-                    <label>Ruta de Imagen (opcional)</label>
-                    <input type="text" id="imagePath" placeholder="/ruta/a/imagen.png">
+                    <label>Imagen (Icono)</label>
+                    <div id="dropzone" class="dropzone">
+                        <p>Haz clic o arrastra una imagen aquí</p>
+                        <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                        <img id="imagePreview" style="max-width: 100%; display: none; margin-top: 10px; border-radius: 8px;">
+                    </div>
+                    <input type="text" id="imagePath" placeholder="/ruta/a/imagen.png" style="margin-top: 10px;">
                 </div>
                 <button class="save-btn" id="saveBtn">Guardar</button>
             </div>
         </div>
     </div>
+
+    <!-- Modal for Cropper -->
+    <div id="cropModal" class="modal">
+        <div class="modal-content">
+            <h3>Recortar Imagen</h3>
+            <div class="cropper-container">
+                <img id="cropImage" src="">
+            </div>
+            <div class="modal-actions">
+                <button id="cancelCrop" class="btn-secondary">Cancelar</button>
+                <button id="applyCrop" class="save-btn">Aplicar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
     <script src="/static/app.js"></script>
 </body>
 </html>

@@ -61,6 +61,10 @@ class ActionExecutor:
 
     def set_action(self, col: int, row: int, action_type: str, payload, image_path: str = ""):
         key_id = f"{col}_{row}"
+        
+        # Clean image path
+        image_path = image_path.strip().strip("'").strip('"')
+        
         self.config[key_id] = {
             "type": action_type,
             "payload": payload,
