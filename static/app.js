@@ -1,3 +1,72 @@
+const i18n = {
+    en: {
+        appTitle: "Stream Deck Configuration",
+        headerTitle: "Stream Deck Controller",
+        deviceTitle: "Device",
+        pagesTitle: "Pages",
+        newPagePlaceholder: "Page name...",
+        settingsTitle: "Settings",
+        brightnessLabel: "Brightness",
+        btnSaveAll: "Deploy / Save All",
+        btnSaving: "Saving...",
+        propertiesTitle: "Properties",
+        elementTitle: "Element",
+        buttonTitle: (col, row) => `Button (Col ${col}, Row ${row})`,
+        extraDisplayTitle: "Extra Display",
+        actionLabel: "Action",
+        actionNone: "None",
+        actionOpenApp: "Open App",
+        actionHotkey: "Hotkey",
+        actionSwitchPage: "Switch Page",
+        actionClock: "Clock Widget",
+        payloadLabel: "Payload",
+        payloadApp: "Application",
+        payloadHotkey: "Keys (e.g. command+c)",
+        payloadPage: "Target Page",
+        imageLabel: "Image",
+        dragDropText: "Drag & Drop",
+        emptyStateText: "Select an element on the canvas to edit its properties.",
+        cropTitle: "Adjust Image",
+        btnCancel: "Cancel",
+        btnApply: "Apply",
+        noDevices: "No devices found"
+    },
+    es: {
+        appTitle: "Configuración Stream Deck",
+        headerTitle: "Controlador Stream Deck",
+        deviceTitle: "Dispositivo",
+        pagesTitle: "Páginas",
+        newPagePlaceholder: "Nombre de página...",
+        settingsTitle: "Ajustes",
+        brightnessLabel: "Brillo",
+        btnSaveAll: "Desplegar / Guardar todo",
+        btnSaving: "Guardando...",
+        propertiesTitle: "Propiedades",
+        elementTitle: "Elemento",
+        buttonTitle: (col, row) => `Botón (Col ${col}, Fila ${row})`,
+        extraDisplayTitle: "Pantalla Extra",
+        actionLabel: "Acción",
+        actionNone: "Ninguna",
+        actionOpenApp: "Abrir App",
+        actionHotkey: "Atajo",
+        actionSwitchPage: "Cambiar Página",
+        actionClock: "Reloj",
+        payloadLabel: "Carga Útil",
+        payloadApp: "Aplicación",
+        payloadHotkey: "Teclas (ej. command+c)",
+        payloadPage: "Página Destino",
+        imageLabel: "Imagen",
+        dragDropText: "Arrastrar y Soltar",
+        emptyStateText: "Selecciona un elemento en el lienzo para editar sus propiedades.",
+        cropTitle: "Ajustar Imagen",
+        btnCancel: "Cancelar",
+        btnApply: "Aplicar",
+        noDevices: "No se encontraron dispositivos"
+    }
+};
+
+let currentLang = 'en';
+
 let config = { pages: { main: {} }, settings: { brightness: 50 } };
 let layout = { width: 896, height: 304, rects: [] };
 let apps = [];
@@ -15,6 +84,7 @@ const newPageName = document.getElementById("new-page-name");
 const deckPreview = document.getElementById("deck-preview");
 const btnSaveAll = document.getElementById("btn-save-all");
 const brightnessSlider = document.getElementById("brightness-slider");
+const langSelect = document.getElementById("lang-select");
 
 // Properties Panel
 const propertiesPanel = document.getElementById("properties-panel");
@@ -30,7 +100,28 @@ const propPayloadGroup = document.getElementById("prop-payload-group");
 const propImageDropzone = document.getElementById("prop-image-dropzone");
 const propImagePreview = document.getElementById("prop-image-preview");
 
+// i18n Translator
+function applyTranslations() {
+    const t = i18n[currentLang];
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (t[key]) el.textContent = t[key];
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        if (t[key]) el.placeholder = t[key];
+    });
+    if (activeRectKey) updatePropertiesPanelTitle();
+    updatePayloadVisibility(); // Update dynamic labels based on action
+}
+
+langSelect.addEventListener('change', (e) => {
+    currentLang = e.target.value;
+    applyTranslations();
+});
+
 async function init() {
+    applyTranslations();
     await fetchDevices();
     await fetchApps();
     if (currentDeviceId) {
@@ -49,16 +140,18 @@ async function fetchDevices() {
     
     if (devices.length === 0) {
         const opt = document.createElement('option');
-        opt.textContent = "No devices found";
+        opt.textContent = i18n[currentLang].noDevices;
         opt.value = "";
         deviceSelect.appendChild(opt);
         return;
     }
     
-    devices.forEach(d => {
+    devices.forEach((d, index) => {
         const opt = document.createElement('option');
         opt.value = d.id;
-        opt.textContent = d.id;
+        // Use the actual device model from the device if available and valid, else fallback
+        let modelName = d.model && d.model !== "Unknown" ? d.model : `Stream Deck ${index + 1}`;
+        opt.textContent = modelName;
         deviceSelect.appendChild(opt);
     });
     
@@ -97,7 +190,6 @@ function renderPagesList() {
     pagesList.innerHTML = '';
     
     // Update the properties panel page selector as well
-    const currentOptions = Array.from(propPageSelect.options).map(o => o.value);
     propPageSelect.innerHTML = '';
     
     for (const pageName in config.pages) {
@@ -157,17 +249,39 @@ function renderCanvas() {
     });
 }
 
+function updatePropertiesPanelTitle(rect) {
+    if (!activeRectKey) return;
+    const t = i18n[currentLang];
+    
+    let currentRect = rect;
+    if (!currentRect) {
+        if (activeRectKey.startsWith('extra_')) {
+            const idx = parseInt(activeRectKey.split('_')[1]);
+            currentRect = layout.rects[idx];
+        } else {
+            const [c, r] = activeRectKey.split('_');
+            currentRect = layout.rects.find(rt => rt.col == c && rt.row == r);
+        }
+    }
+    
+    if (currentRect && currentRect.isKey) {
+        propTitle.textContent = t.buttonTitle(currentRect.col, currentRect.row);
+    } else {
+        propTitle.textContent = t.extraDisplayTitle;
+    }
+}
+
 function updatePropertiesPanel(rect = null, keyID = null, actionData = null) {
     if (!keyID) {
         propertiesPanel.style.display = 'none';
-        propertiesEmpty.style.display = 'block';
+        propertiesEmpty.style.display = 'flex';
         return;
     }
     
     propertiesPanel.style.display = 'block';
     propertiesEmpty.style.display = 'none';
     
-    propTitle.textContent = rect.isKey ? `Button (Col ${rect.col}, Row ${rect.row})` : `Extra Display`;
+    updatePropertiesPanelTitle(rect);
     
     // Reset fields
     propAction.value = actionData ? actionData.type || "" : "";
@@ -189,22 +303,24 @@ function updatePropertiesPanel(rect = null, keyID = null, actionData = null) {
 
 function updatePayloadVisibility() {
     const action = propAction.value;
+    const t = i18n[currentLang];
+    
     propPayload.style.display = 'none';
     propAppSelect.style.display = 'none';
     propPageSelect.style.display = 'none';
     propPayloadGroup.style.display = 'block';
     
     if (action === 'open_app') {
-        propPayloadLabel.textContent = "Application";
+        propPayloadLabel.textContent = t.payloadApp;
         propAppSelect.style.display = 'block';
     } else if (action === 'hotkey') {
-        propPayloadLabel.textContent = "Keys (e.g. command+c)";
+        propPayloadLabel.textContent = t.payloadHotkey;
         propPayload.style.display = 'block';
     } else if (action === 'switch_page') {
-        propPayloadLabel.textContent = "Target Page";
+        propPayloadLabel.textContent = t.payloadPage;
         propPageSelect.style.display = 'block';
     } else if (action === 'clock') {
-        propPayloadGroup.style.display = 'none'; // Clocks might not need payload for now
+        propPayloadGroup.style.display = 'none';
     } else {
         propPayloadGroup.style.display = 'none';
     }
@@ -244,171 +360,165 @@ async function saveActiveRectState() {
     renderCanvas();
 }
 
-// Event Listeners
-propAction.addEventListener('change', () => {
-    updatePayloadVisibility();
-    saveActiveRectState();
-});
-
-propPayload.addEventListener('input', saveActiveRectState);
-propAppSelect.addEventListener('change', saveActiveRectState);
-propPageSelect.addEventListener('change', saveActiveRectState);
-
-btnNewPage.addEventListener('click', () => {
-    const name = newPageName.value.trim();
-    if (name && !config.pages[name]) {
-        config.pages[name] = {};
-        newPageName.value = '';
-        renderPagesList();
-    }
-});
-
-btnSaveAll.addEventListener('click', async () => {
-    config.settings.brightness = parseInt(brightnessSlider.value);
-    
-    btnSaveAll.textContent = "Saving...";
-    await fetch(`/api/config?device_id=${encodeURIComponent(currentDeviceId)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config)
+function setupEventListeners() {
+    propAction.addEventListener('change', () => {
+        updatePayloadVisibility();
+        saveActiveRectState();
     });
-    btnSaveAll.textContent = "Deploy / Save All";
-});
 
-deviceSelect.addEventListener('change', async (e) => {
-    currentDeviceId = e.target.value;
-    if (currentDeviceId) {
-        await fetchLayout();
-        await fetchConfig();
-        currentPage = "main";
-        activeRectKey = null;
-        updatePropertiesPanel();
-        renderPagesList();
-        renderCanvas();
-    }
-});
+    propPayload.addEventListener('input', saveActiveRectState);
+    propAppSelect.addEventListener('change', saveActiveRectState);
+    propPageSelect.addEventListener('change', saveActiveRectState);
 
-// Drag and Drop & Cropper
-propImageDropzone.addEventListener('dragover', e => {
-    e.preventDefault();
-    propImageDropzone.classList.add('dragover');
-});
+    btnNewPage.addEventListener('click', () => {
+        const name = newPageName.value.trim();
+        if (name && !config.pages[name]) {
+            config.pages[name] = {};
+            newPageName.value = '';
+            renderPagesList();
+        }
+    });
 
-propImageDropzone.addEventListener('dragleave', e => {
-    e.preventDefault();
-    propImageDropzone.classList.remove('dragover');
-});
+    btnSaveAll.addEventListener('click', async () => {
+        config.settings.brightness = parseInt(brightnessSlider.value);
+        
+        btnSaveAll.textContent = i18n[currentLang].btnSaving;
+        await fetch(`/api/config?device_id=${encodeURIComponent(currentDeviceId)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        btnSaveAll.textContent = i18n[currentLang].btnSaveAll;
+    });
 
-propImageDropzone.addEventListener('drop', async e => {
-    e.preventDefault();
-    propImageDropzone.classList.remove('dragover');
-    if (!activeRectKey) return;
-    
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        const file = e.dataTransfer.files[0];
-        if (file.type === 'image/gif') {
-            try {
-                const res = await fetch('/api/upload_file', {
-                    method: 'POST',
-                    headers: {
-                        'X-File-Name': file.name,
-                        'Content-Type': file.type
-                    },
-                    body: file // Send raw file instead of FormData
-                });
-                const data = await res.json();
-                
-                if (!config.pages[currentPage]) config.pages[currentPage] = {};
-                if (!config.pages[currentPage][activeRectKey]) config.pages[currentPage][activeRectKey] = {};
-                
-                config.pages[currentPage][activeRectKey].image = data.path;
-                
-                // Show preview using the raw file data
+    deviceSelect.addEventListener('change', async (e) => {
+        currentDeviceId = e.target.value;
+        if (currentDeviceId) {
+            await fetchLayout();
+            await fetchConfig();
+            currentPage = "main";
+            activeRectKey = null;
+            updatePropertiesPanel();
+            renderPagesList();
+            renderCanvas();
+        }
+    });
+
+    // Drag and Drop & Cropper
+    propImageDropzone.addEventListener('dragover', e => {
+        e.preventDefault();
+        propImageDropzone.classList.add('dragover');
+    });
+
+    propImageDropzone.addEventListener('dragleave', e => {
+        e.preventDefault();
+        propImageDropzone.classList.remove('dragover');
+    });
+
+    propImageDropzone.addEventListener('drop', async e => {
+        e.preventDefault();
+        propImageDropzone.classList.remove('dragover');
+        if (!activeRectKey) return;
+        
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            const file = e.dataTransfer.files[0];
+            if (file.type === 'image/gif') {
+                try {
+                    const res = await fetch('/api/upload_file', {
+                        method: 'POST',
+                        headers: {
+                            'X-File-Name': file.name,
+                            'Content-Type': file.type
+                        },
+                        body: file
+                    });
+                    const data = await res.json();
+                    
+                    if (!config.pages[currentPage]) config.pages[currentPage] = {};
+                    if (!config.pages[currentPage][activeRectKey]) config.pages[currentPage][activeRectKey] = {};
+                    
+                    config.pages[currentPage][activeRectKey].image = data.path;
+                    
+                    const reader = new FileReader();
+                    reader.onload = (re) => {
+                        propImagePreview.src = re.target.result;
+                        propImagePreview.style.display = 'block';
+                    };
+                    reader.readAsDataURL(file);
+                    
+                    renderCanvas();
+                } catch (err) {
+                    console.error("GIF Upload failed", err);
+                }
+            } else if (file.type.startsWith('image/')) {
+                currentCropFile = file;
                 const reader = new FileReader();
-                reader.onload = (re) => {
-                    propImagePreview.src = re.target.result;
-                    propImagePreview.style.display = 'block';
+                reader.onload = (e) => {
+                    document.getElementById('crop-image').src = e.target.result;
+                    document.getElementById('crop-modal').style.display = 'block';
+                    
+                    let rect;
+                    if (activeRectKey.startsWith('extra_')) {
+                        const idx = parseInt(activeRectKey.split('_')[1]);
+                        rect = layout.rects[idx];
+                    } else {
+                        const [c, r] = activeRectKey.split('_');
+                        rect = layout.rects.find(rt => rt.col == c && rt.row == r);
+                    }
+                    const ratio = rect ? rect.width / rect.height : 1;
+                    
+                    if (cropper) cropper.destroy();
+                    cropper = new Cropper(document.getElementById('crop-image'), {
+                        aspectRatio: ratio,
+                        viewMode: 1
+                    });
                 };
                 reader.readAsDataURL(file);
-                
-                renderCanvas();
-            } catch (err) {
-                console.error("GIF Upload failed", err);
             }
-        } else if (file.type.startsWith('image/')) {
-            currentCropFile = file;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                document.getElementById('crop-image').src = e.target.result;
-                document.getElementById('crop-modal').style.display = 'block';
-                
-                // Get rect aspect ratio
-                let rect;
-                if (activeRectKey.startsWith('extra_')) {
-                    const idx = parseInt(activeRectKey.split('_')[1]);
-                    rect = layout.rects[idx];
-                } else {
-                    const [c, r] = activeRectKey.split('_');
-                    rect = layout.rects.find(rt => rt.col == c && rt.row == r);
-                }
-                const ratio = rect ? rect.width / rect.height : 1;
-                
-                if (cropper) cropper.destroy();
-                cropper = new Cropper(document.getElementById('crop-image'), {
-                    aspectRatio: ratio,
-                    viewMode: 1
-                });
-            };
-            reader.readAsDataURL(file);
         }
-    }
-});
-
-document.getElementById('btn-cancel-crop').addEventListener('click', () => {
-    document.getElementById('crop-modal').style.display = 'none';
-    if (cropper) cropper.destroy();
-});
-
-document.getElementById('btn-apply-crop').addEventListener('click', async () => {
-    if (!cropper || !activeRectKey) return;
-    
-    // Get rect size
-    let rect;
-    if (activeRectKey.startsWith('extra_')) {
-        const idx = parseInt(activeRectKey.split('_')[1]);
-        rect = layout.rects[idx];
-    } else {
-        const [c, r] = activeRectKey.split('_');
-        rect = layout.rects.find(rt => rt.col == c && rt.row == r);
-    }
-    
-    const canvas = cropper.getCroppedCanvas({
-        width: rect ? rect.width : 256,
-        height: rect ? rect.height : 256
     });
-    
-    const base64Image = canvas.toDataURL('image/png');
-    document.getElementById('crop-modal').style.display = 'none';
-    
-    // Upload
-    const res = await fetch('/api/upload_base64', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_data: base64Image })
+
+    document.getElementById('btn-cancel-crop').addEventListener('click', () => {
+        document.getElementById('crop-modal').style.display = 'none';
+        if (cropper) cropper.destroy();
     });
-    const data = await res.json();
-    
-    if (!config.pages[currentPage]) config.pages[currentPage] = {};
-    if (!config.pages[currentPage][activeRectKey]) config.pages[currentPage][activeRectKey] = {};
-    
-    // Force absolute path or relative path, ensure it works. 
-    // Data returned is absolute path, let's keep it clean by using relative `/static/uploads/filename` if possible.
-    // The server returns `abs_path`. Let's just use it, Python handles it.
-    config.pages[currentPage][activeRectKey].image = data.path;
-    
-    propImagePreview.src = base64Image;
-    propImagePreview.style.display = 'block';
-    renderCanvas();
-});
+
+    document.getElementById('btn-apply-crop').addEventListener('click', async () => {
+        if (!cropper || !activeRectKey) return;
+        
+        let rect;
+        if (activeRectKey.startsWith('extra_')) {
+            const idx = parseInt(activeRectKey.split('_')[1]);
+            rect = layout.rects[idx];
+        } else {
+            const [c, r] = activeRectKey.split('_');
+            rect = layout.rects.find(rt => rt.col == c && rt.row == r);
+        }
+        
+        const canvas = cropper.getCroppedCanvas({
+            width: rect ? rect.width : 256,
+            height: rect ? rect.height : 256
+        });
+        
+        const base64Image = canvas.toDataURL('image/png');
+        document.getElementById('crop-modal').style.display = 'none';
+        
+        const res = await fetch('/api/upload_base64', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image_data: base64Image })
+        });
+        const data = await res.json();
+        
+        if (!config.pages[currentPage]) config.pages[currentPage] = {};
+        if (!config.pages[currentPage][activeRectKey]) config.pages[currentPage][activeRectKey] = {};
+        
+        config.pages[currentPage][activeRectKey].image = data.path;
+        
+        propImagePreview.src = base64Image;
+        propImagePreview.style.display = 'block';
+        renderCanvas();
+    });
+}
 
 init();

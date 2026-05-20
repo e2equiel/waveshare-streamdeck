@@ -114,7 +114,7 @@ class ActionRequest(BaseModel):
 
 @app.get("/api/devices")
 def get_devices():
-    return [{"id": k} for k in controllers.keys()]
+    return [{"id": k, "model": c.device_model} for k, c in controllers.items()]
 
 def migrate_config():
     if not os.path.exists('config.json'):

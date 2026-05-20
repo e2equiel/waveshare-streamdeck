@@ -3,103 +3,125 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stream Deck Configuration</title>
+    <title data-i18n="appTitle">Stream Deck Configuration</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="app-container">
-        <!-- LEFT SIDEBAR -->
-        <aside class="sidebar sidebar-left">
-            <h2>Device</h2>
-            <div class="form-group" style="margin-bottom: 20px;">
-                <select id="device-select" class="form-control" style="width: 100%;">
-                    <!-- Devices injected here -->
+    <div class="desktop-window">
+        <!-- Top Title Bar -->
+        <header class="topbar">
+            <div class="topbar-left">
+                <div class="window-controls">
+                    <span class="control-btn close"></span>
+                    <span class="control-btn minimize"></span>
+                    <span class="control-btn maximize"></span>
+                </div>
+                <h1 data-i18n="headerTitle">Stream Deck Controller</h1>
+            </div>
+            <div class="topbar-right">
+                <select id="lang-select" class="lang-switcher">
+                    <option value="en">English</option>
+                    <option value="es">Español</option>
                 </select>
             </div>
-            
-            <hr>
-            
-            <h2>Pages</h2>
-            <ul id="pages-list" class="list-group">
-                <!-- Pages will be injected here -->
-            </ul>
-            <div class="form-group row">
-                <input type="text" id="new-page-name" placeholder="Page name...">
-                <button id="btn-new-page" class="btn secondary">+</button>
-            </div>
-            
-            <hr>
-            
-            <h2>Settings</h2>
-            <div class="setting-group">
-                <label>Brightness</label>
-                <input type="range" id="brightness-slider" min="0" max="100" value="50">
-            </div>
-            
-            <button id="btn-save-all" class="btn primary">Deploy / Save All</button>
-        </aside>
+        </header>
 
-        <!-- CENTER CANVAS -->
-        <main class="canvas-container">
-            <div id="deck-wrapper">
-                <div id="deck-preview" class="deck-preview">
-                    <!-- Rect elements injected dynamically based on /api/layout -->
-                </div>
-            </div>
-        </main>
-
-        <!-- RIGHT SIDEBAR -->
-        <aside class="sidebar sidebar-right">
-            <h2>Properties</h2>
-            <div id="properties-panel" style="display:none;">
-                <h3 id="prop-title">Element</h3>
-                <div class="form-group">
-                    <label>Action</label>
-                    <select id="prop-action">
-                        <option value="">None</option>
-                        <option value="open_app">Open App</option>
-                        <option value="hotkey">Hotkey</option>
-                        <option value="switch_page">Switch Page</option>
-                        <option value="clock">Clock Widget</option>
-                    </select>
-                </div>
-                
-                <div class="form-group" id="prop-payload-group">
-                    <label id="prop-payload-label">Payload</label>
-                    <input type="text" id="prop-payload" placeholder="...">
-                    <select id="prop-app-select" style="display:none;"></select>
-                    <select id="prop-page-select" style="display:none;"></select>
-                </div>
-                
-                <div class="form-group">
-                    <label>Image</label>
-                    <div id="prop-image-dropzone" class="dropzone">
-                        <img id="prop-image-preview" src="" style="display:none;">
-                        <div class="dropzone-text" id="prop-image-text">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-                            <p>Drag & Drop</p>
+        <div class="app-container">
+            <!-- LEFT SIDEBAR (PROPERTIES) -->
+            <aside class="sidebar sidebar-left">
+                <h2 data-i18n="propertiesTitle">Properties</h2>
+                <div id="properties-panel" style="display:none;" class="glass-panel">
+                    <h3 id="prop-title" data-i18n="elementTitle">Element</h3>
+                    <div class="form-group">
+                        <label data-i18n="actionLabel">Action</label>
+                        <select id="prop-action">
+                            <option value="" data-i18n="actionNone">None</option>
+                            <option value="open_app" data-i18n="actionOpenApp">Open App</option>
+                            <option value="hotkey" data-i18n="actionHotkey">Hotkey</option>
+                            <option value="switch_page" data-i18n="actionSwitchPage">Switch Page</option>
+                            <option value="clock" data-i18n="actionClock">Clock Widget</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" id="prop-payload-group">
+                        <label id="prop-payload-label" data-i18n="payloadLabel">Payload</label>
+                        <input type="text" id="prop-payload" placeholder="...">
+                        <select id="prop-app-select" style="display:none;"></select>
+                        <select id="prop-page-select" style="display:none;"></select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label data-i18n="imageLabel">Image</label>
+                        <div id="prop-image-dropzone" class="dropzone">
+                            <img id="prop-image-preview" src="" style="display:none;">
+                            <div class="dropzone-text" id="prop-image-text">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                                <p data-i18n="dragDropText">Drag & Drop</p>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-            <div id="properties-empty">
-                <p>Select an element on the canvas to edit its properties.</p>
-            </div>
-        </aside>
+                <div id="properties-empty" class="empty-state">
+                    <p data-i18n="emptyStateText">Select an element on the canvas to edit its properties.</p>
+                </div>
+            </aside>
+
+            <!-- CENTER CANVAS -->
+            <main class="canvas-container">
+                <div id="deck-wrapper">
+                    <div id="deck-preview" class="deck-preview">
+                        <!-- Rect elements injected dynamically based on /api/layout -->
+                    </div>
+                </div>
+            </main>
+
+            <!-- RIGHT SIDEBAR (DEVICE, PAGES, SETTINGS) -->
+            <aside class="sidebar sidebar-right">
+                <h2 data-i18n="deviceTitle">Device</h2>
+                <div class="form-group" style="margin-bottom: 24px;">
+                    <select id="device-select" class="form-control">
+                        <!-- Devices injected here -->
+                    </select>
+                </div>
+                
+                <hr>
+                
+                <h2 data-i18n="pagesTitle">Pages</h2>
+                <ul id="pages-list" class="list-group">
+                    <!-- Pages will be injected here -->
+                </ul>
+                <div class="form-group row add-page-group">
+                    <input type="text" id="new-page-name" data-i18n-placeholder="newPagePlaceholder" placeholder="Page name...">
+                    <button id="btn-new-page" class="btn secondary icon-btn">+</button>
+                </div>
+                
+                <hr>
+                
+                <h2 data-i18n="settingsTitle">Settings</h2>
+                <div class="setting-group">
+                    <label data-i18n="brightnessLabel">Brightness</label>
+                    <input type="range" id="brightness-slider" min="0" max="100" value="50">
+                </div>
+                
+                <div class="sidebar-footer">
+                    <button id="btn-save-all" class="btn primary" data-i18n="btnSaveAll">Deploy / Save All</button>
+                </div>
+            </aside>
+        </div>
     </div>
 
     <!-- Cropper Modal -->
     <div id="crop-modal" class="modal">
-        <div class="modal-content">
-            <h3>Adjust Image</h3>
+        <div class="modal-content glass-panel">
+            <h3 data-i18n="cropTitle">Adjust Image</h3>
             <div class="crop-container">
                 <img id="crop-image" src="" alt="To crop">
             </div>
             <div class="modal-actions">
-                <button id="btn-cancel-crop" class="btn secondary">Cancel</button>
-                <button id="btn-apply-crop" class="btn primary">Apply</button>
+                <button id="btn-cancel-crop" class="btn secondary" data-i18n="btnCancel">Cancel</button>
+                <button id="btn-apply-crop" class="btn primary" data-i18n="btnApply">Apply</button>
             </div>
         </div>
     </div>
