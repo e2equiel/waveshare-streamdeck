@@ -5,8 +5,10 @@ let currentPage = "main";
 let activeRectKey = null; // e.g. "0_0" or "extra_0"
 let cropper = null;
 let currentCropFile = null;
+let currentDeviceId = "";
 
 // DOM Elements
+const deviceSelect = document.getElementById("device-select");
 const pagesList = document.getElementById("pages-list");
 const btnNewPage = document.getElementById("btn-new-page");
 const newPageName = document.getElementById("new-page-name");
@@ -29,13 +31,39 @@ const propImageDropzone = document.getElementById("prop-image-dropzone");
 const propImagePreview = document.getElementById("prop-image-preview");
 
 async function init() {
+    await fetchDevices();
     await fetchApps();
-    await fetchLayout();
-    await fetchConfig();
-    
-    renderPagesList();
-    renderCanvas();
+    if (currentDeviceId) {
+        await fetchLayout();
+        await fetchConfig();
+        renderPagesList();
+        renderCanvas();
+    }
     setupEventListeners();
+}
+
+async function fetchDevices() {
+    const res = await fetch('/api/devices');
+    const devices = await res.json();
+    deviceSelect.innerHTML = '';
+    
+    if (devices.length === 0) {
+        const opt = document.createElement('option');
+        opt.textContent = "No devices found";
+        opt.value = "";
+        deviceSelect.appendChild(opt);
+        return;
+    }
+    
+    devices.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.id;
+        opt.textContent = d.id;
+        deviceSelect.appendChild(opt);
+    });
+    
+    currentDeviceId = devices[0].id;
+    deviceSelect.value = currentDeviceId;
 }
 
 async function fetchApps() {
@@ -50,14 +78,14 @@ async function fetchApps() {
 }
 
 async function fetchLayout() {
-    const res = await fetch('/api/layout');
+    const res = await fetch(`/api/layout?device_id=${encodeURIComponent(currentDeviceId)}`);
     layout = await res.json();
     deckPreview.style.width = layout.width + 'px';
     deckPreview.style.height = layout.height + 'px';
 }
 
 async function fetchConfig() {
-    const res = await fetch('/api/config');
+    const res = await fetch(`/api/config?device_id=${encodeURIComponent(currentDeviceId)}`);
     config = await res.json();
     if (!config.pages) config.pages = { main: {} };
     if (!config.settings) config.settings = { brightness: 50 };
@@ -182,7 +210,7 @@ function updatePayloadVisibility() {
     }
 }
 
-function saveActiveRectState() {
+async function saveActiveRectState() {
     if (!activeRectKey) return;
     
     if (!config.pages[currentPage]) config.pages[currentPage] = {};
@@ -199,11 +227,18 @@ function saveActiveRectState() {
     
     // Check if auto-icon extraction needed
     if (action === 'open_app' && propAppSelect.value) {
-        const iconUrl = `/api/app_icon?app_path=${encodeURIComponent(propAppSelect.value)}`;
-        pageData[activeRectKey].image = iconUrl;
-        const sep = iconUrl.includes('?') ? '&' : '?';
-        propImagePreview.src = `${iconUrl}${sep}t=${Date.now()}`;
-        propImagePreview.style.display = 'block';
+        try {
+            const res = await fetch(`/api/extract_app_icon?app_path=${encodeURIComponent(propAppSelect.value)}`);
+            if (res.ok) {
+                const data = await res.json();
+                pageData[activeRectKey].image = data.path;
+                const sep = data.path.includes('?') ? '&' : '?';
+                propImagePreview.src = `${data.path}${sep}t=${Date.now()}`;
+                propImagePreview.style.display = 'block';
+            }
+        } catch (e) {
+            console.error("Failed to extract icon", e);
+        }
     }
     
     renderCanvas();
@@ -232,12 +267,25 @@ btnSaveAll.addEventListener('click', async () => {
     config.settings.brightness = parseInt(brightnessSlider.value);
     
     btnSaveAll.textContent = "Saving...";
-    await fetch('/api/config', {
+    await fetch(`/api/config?device_id=${encodeURIComponent(currentDeviceId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config)
     });
     btnSaveAll.textContent = "Deploy / Save All";
+});
+
+deviceSelect.addEventListener('change', async (e) => {
+    currentDeviceId = e.target.value;
+    if (currentDeviceId) {
+        await fetchLayout();
+        await fetchConfig();
+        currentPage = "main";
+        activeRectKey = null;
+        updatePropertiesPanel();
+        renderPagesList();
+        renderCanvas();
+    }
 });
 
 // Drag and Drop & Cropper
@@ -251,14 +299,43 @@ propImageDropzone.addEventListener('dragleave', e => {
     propImageDropzone.classList.remove('dragover');
 });
 
-propImageDropzone.addEventListener('drop', e => {
+propImageDropzone.addEventListener('drop', async e => {
     e.preventDefault();
     propImageDropzone.classList.remove('dragover');
     if (!activeRectKey) return;
     
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
         const file = e.dataTransfer.files[0];
-        if (file.type.startsWith('image/')) {
+        if (file.type === 'image/gif') {
+            try {
+                const res = await fetch('/api/upload_file', {
+                    method: 'POST',
+                    headers: {
+                        'X-File-Name': file.name,
+                        'Content-Type': file.type
+                    },
+                    body: file // Send raw file instead of FormData
+                });
+                const data = await res.json();
+                
+                if (!config.pages[currentPage]) config.pages[currentPage] = {};
+                if (!config.pages[currentPage][activeRectKey]) config.pages[currentPage][activeRectKey] = {};
+                
+                config.pages[currentPage][activeRectKey].image = data.path;
+                
+                // Show preview using the raw file data
+                const reader = new FileReader();
+                reader.onload = (re) => {
+                    propImagePreview.src = re.target.result;
+                    propImagePreview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+                
+                renderCanvas();
+            } catch (err) {
+                console.error("GIF Upload failed", err);
+            }
+        } else if (file.type.startsWith('image/')) {
             currentCropFile = file;
             const reader = new FileReader();
             reader.onload = (e) => {
