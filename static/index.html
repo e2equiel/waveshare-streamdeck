@@ -41,6 +41,11 @@
                             <option value="open_app" data-i18n="actionOpenApp">Open App</option>
                             <option value="hotkey" data-i18n="actionHotkey">Hotkey</option>
                             <option value="switch_page" data-i18n="actionSwitchPage">Switch Page</option>
+                            <option value="folder" data-i18n="actionFolder">Folder</option>
+                            <option value="back_button" data-i18n="actionBackButton">Back Button</option>
+                            <option value="media" data-i18n="actionMedia">Media Control</option>
+                            <option value="text" data-i18n="actionText">Type Text</option>
+                            <option value="multi_action" data-i18n="actionMulti">Multi-Action (Macro)</option>
                             <option value="clock" data-i18n="actionClock">Clock Widget</option>
                         </select>
                     </div>
@@ -50,10 +55,32 @@
                         <input type="text" id="prop-payload" placeholder="...">
                         <select id="prop-app-select" style="display:none;"></select>
                         <select id="prop-page-select" style="display:none;"></select>
+                        <select id="prop-media-select" style="display:none;">
+                            <option value="playpause" data-i18n="mediaPlayPause">Play / Pause</option>
+                            <option value="nexttrack" data-i18n="mediaNext">Next Track</option>
+                            <option value="prevtrack" data-i18n="mediaPrev">Previous Track</option>
+                            <option value="volumeup" data-i18n="mediaVolUp">Volume Up</option>
+                            <option value="volumedown" data-i18n="mediaVolDown">Volume Down</option>
+                            <option value="volumemute" data-i18n="mediaMute">Mute</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" id="prop-macro-group" style="display:none; margin-top: 10px; border-top: 1px solid var(--glass-border); padding-top: 10px;">
+                        <label data-i18n="macroSteps">Macro Steps</label>
+                        <div id="macro-steps-list" style="display:flex; flex-direction:column; gap: 8px; margin-bottom: 8px; max-height: 200px; overflow-y:auto; padding-right: 5px;"></div>
+                        <button id="btn-add-macro-step" class="btn secondary" style="width: 100%; font-size: 0.9rem;" data-i18n="btnAddMacroStep">+ Add Action</button>
+                    </div>
+
+                    <div class="form-group">
+                        <label data-i18n="labelLabel">Label (Text on icon)</label>
+                        <input type="text" id="prop-label" data-i18n-placeholder="labelPlaceholder" placeholder="e.g., Play, OBS...">
                     </div>
                     
                     <div class="form-group">
-                        <label data-i18n="imageLabel">Image</label>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <label style="margin:0;" data-i18n="imageLabel">Image</label>
+                            <button id="btn-choose-icon" class="btn secondary" style="padding: 4px 8px; font-size: 0.8rem;" data-i18n="btnChooseIcon">Choose Icon</button>
+                        </div>
                         <div id="prop-image-dropzone" class="dropzone">
                             <img id="prop-image-preview" src="" style="display:none;">
                             <div class="dropzone-text" id="prop-image-text">
@@ -112,6 +139,18 @@
         </div>
     </div>
 
+    <!-- Icon Selector Modal -->
+    <div id="icon-modal" class="modal">
+        <div class="modal-content glass-panel" style="max-width: 800px; height: 80vh; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin:0;" data-i18n="iconTitle">Select an Icon</h3>
+                <span class="close-modal" id="close-icon-modal">&times;</span>
+            </div>
+            <input type="text" id="icon-search" data-i18n-placeholder="searchIconPlaceholder" placeholder="Search icons..." style="margin-bottom: 16px;">
+            <div id="icon-grid" class="icon-grid"></div>
+        </div>
+    </div>
+
     <!-- Cropper Modal -->
     <div id="crop-modal" class="modal">
         <div class="modal-content glass-panel">
@@ -127,6 +166,7 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <script src="app.js"></script>
 </body>
 </html>

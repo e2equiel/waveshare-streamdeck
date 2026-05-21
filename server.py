@@ -50,11 +50,25 @@ def key_handler(device_id, c, r, pressed):
     page_config = controller.config.get("pages", {}).get(controller.current_page, {})
     action = page_config.get(f"{c}_{r}")
     if action:
-        if action.get("type") == "switch_page":
+        action_type = action.get("type")
+        if action_type == "switch_page":
             target = action.get("payload")
             if target and target in controller.config.get("pages", {}):
                 controller.current_page = target
+                controller.navigation_stack.clear() # Clear stack on direct jump
                 controller.render_screen(controller.config)
+        elif action_type == "folder":
+            target = action.get("payload")
+            if target and target in controller.config.get("pages", {}):
+                controller.navigation_stack.append(controller.current_page)
+                controller.current_page = target
+                controller.render_screen(controller.config)
+        elif action_type == "back_button":
+            if controller.navigation_stack:
+                controller.current_page = controller.navigation_stack.pop()
+            else:
+                controller.current_page = "main"
+            controller.render_screen(controller.config)
         else:
             # We pass the single action to executor since executor doesn't need to know pagination
             executor.execute(f"{c}_{r}", page_config)

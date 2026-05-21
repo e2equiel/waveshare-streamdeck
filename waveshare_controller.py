@@ -92,6 +92,7 @@ class WaveshareController:
         self.cached_jpg = None
         self.config = {}
         self.current_page = "main"
+        self.navigation_stack = []
         
         # Animation
         self.animated_elements = [] # list of dicts with icon, x, y, frame_durations, current_frame, next_update

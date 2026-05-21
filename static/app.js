@@ -18,18 +18,41 @@ const i18n = {
         actionOpenApp: "Open App",
         actionHotkey: "Hotkey",
         actionSwitchPage: "Switch Page",
+        actionFolder: "Open Folder",
+        actionBackButton: "Back Button",
+        actionMedia: "Media Control",
+        actionText: "Type Text",
+        actionMulti: "Multi-Action (Macro)",
         actionClock: "Clock Widget",
         payloadLabel: "Payload",
         payloadApp: "Application",
         payloadHotkey: "Keys (e.g. command+c)",
         payloadPage: "Target Page",
+        payloadFolder: "Folder Name",
+        payloadMedia: "Media Command",
+        payloadText: "Text to type",
+        mediaPlayPause: "Play / Pause",
+        mediaNext: "Next Track",
+        mediaPrev: "Previous Track",
+        mediaVolUp: "Volume Up",
+        mediaVolDown: "Volume Down",
+        mediaMute: "Mute",
         imageLabel: "Image",
+        labelLabel: "Label (Text on icon)",
+        labelPlaceholder: "e.g., Play, OBS...",
+        btnChooseIcon: "Choose Icon",
+        iconTitle: "Select an Icon",
+        searchIconPlaceholder: "Search icons...",
         dragDropText: "Drag & Drop",
         emptyStateText: "Select an element on the canvas to edit its properties.",
         cropTitle: "Adjust Image",
         btnCancel: "Cancel",
         btnApply: "Apply",
-        noDevices: "No devices found"
+        noDevices: "No devices found",
+        macroSteps: "Macro Steps",
+        btnAddMacroStep: "+ Add Action",
+        actionDelay: "Delay (pause)",
+        payloadDelay: "e.g. 1500 (for 1.5s)"
     },
     es: {
         appTitle: "Configuración Stream Deck",
@@ -50,18 +73,41 @@ const i18n = {
         actionOpenApp: "Abrir App",
         actionHotkey: "Atajo",
         actionSwitchPage: "Cambiar Página",
+        actionFolder: "Abrir Carpeta",
+        actionBackButton: "Botón Atrás",
+        actionMedia: "Control Multimedia",
+        actionText: "Escribir Texto",
+        actionMulti: "Multi-Acción (Macro)",
         actionClock: "Reloj",
         payloadLabel: "Carga Útil",
         payloadApp: "Aplicación",
         payloadHotkey: "Teclas (ej. command+c)",
         payloadPage: "Página Destino",
+        payloadFolder: "Nombre de Carpeta",
+        payloadMedia: "Comando Multimedia",
+        payloadText: "Texto a escribir",
+        mediaPlayPause: "Reproducir / Pausa",
+        mediaNext: "Siguiente Pista",
+        mediaPrev: "Pista Anterior",
+        mediaVolUp: "Subir Volumen",
+        mediaVolDown: "Bajar Volumen",
+        mediaMute: "Silenciar",
         imageLabel: "Imagen",
+        labelLabel: "Etiqueta (Texto en ícono)",
+        labelPlaceholder: "ej., Play, OBS...",
+        btnChooseIcon: "Elegir Ícono",
+        iconTitle: "Selecciona un Ícono",
+        searchIconPlaceholder: "Buscar íconos...",
         dragDropText: "Arrastrar y Soltar",
         emptyStateText: "Selecciona un elemento en el lienzo para editar sus propiedades.",
         cropTitle: "Ajustar Imagen",
         btnCancel: "Cancelar",
         btnApply: "Aplicar",
-        noDevices: "No se encontraron dispositivos"
+        noDevices: "No se encontraron dispositivos",
+        macroSteps: "Pasos de Macro",
+        btnAddMacroStep: "+ Agregar Acción",
+        actionDelay: "Retraso (pausa)",
+        payloadDelay: "ej. 1500 (para 1.5s)"
     }
 };
 
@@ -71,7 +117,7 @@ let config = { pages: { main: {} }, settings: { brightness: 50 } };
 let layout = { width: 896, height: 304, rects: [] };
 let apps = [];
 let currentPage = "main";
-let activeRectKey = null; // e.g. "0_0" or "extra_0"
+let activeRectKey = null;
 let cropper = null;
 let currentCropFile = null;
 let currentDeviceId = "";
@@ -94,11 +140,24 @@ const propAction = document.getElementById("prop-action");
 const propPayload = document.getElementById("prop-payload");
 const propAppSelect = document.getElementById("prop-app-select");
 const propPageSelect = document.getElementById("prop-page-select");
+const propMediaSelect = document.getElementById("prop-media-select");
 const propPayloadLabel = document.getElementById("prop-payload-label");
 const propPayloadGroup = document.getElementById("prop-payload-group");
+const propLabel = document.getElementById("prop-label");
+
+const propMacroGroup = document.getElementById("prop-macro-group");
+const macroStepsList = document.getElementById("macro-steps-list");
+const btnAddMacroStep = document.getElementById("btn-add-macro-step");
+let currentMacroSteps = [];
 
 const propImageDropzone = document.getElementById("prop-image-dropzone");
 const propImagePreview = document.getElementById("prop-image-preview");
+const btnChooseIcon = document.getElementById("btn-choose-icon");
+
+const iconModal = document.getElementById("icon-modal");
+const closeIconModal = document.getElementById("close-icon-modal");
+const iconSearch = document.getElementById("icon-search");
+const iconGrid = document.getElementById("icon-grid");
 
 // i18n Translator
 function applyTranslations() {
@@ -112,7 +171,8 @@ function applyTranslations() {
         if (t[key]) el.placeholder = t[key];
     });
     if (activeRectKey) updatePropertiesPanelTitle();
-    updatePayloadVisibility(); // Update dynamic labels based on action
+    updatePayloadVisibility();
+    if (activeRectKey && propAction.value === 'multi_action') renderMacroSteps();
 }
 
 langSelect.addEventListener('change', (e) => {
@@ -149,7 +209,6 @@ async function fetchDevices() {
     devices.forEach((d, index) => {
         const opt = document.createElement('option');
         opt.value = d.id;
-        // Use the actual device model from the device if available and valid, else fallback
         let modelName = d.model && d.model !== "Unknown" ? d.model : `Stream Deck ${index + 1}`;
         opt.textContent = modelName;
         deviceSelect.appendChild(opt);
@@ -182,20 +241,42 @@ async function fetchConfig() {
     config = await res.json();
     if (!config.pages) config.pages = { main: {} };
     if (!config.settings) config.settings = { brightness: 50 };
-    
     brightnessSlider.value = config.settings.brightness;
 }
 
 function renderPagesList() {
     pagesList.innerHTML = '';
-    
-    // Update the properties panel page selector as well
     propPageSelect.innerHTML = '';
     
     for (const pageName in config.pages) {
-        // UI List
         const li = document.createElement('li');
-        li.textContent = pageName;
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = pageName;
+        li.appendChild(nameSpan);
+        
+        if (pageName !== 'main') {
+            const delBtn = document.createElement('span');
+            delBtn.innerHTML = '&times;';
+            delBtn.style.color = '#ef4444';
+            delBtn.style.padding = '0 5px';
+            delBtn.style.borderRadius = '4px';
+            delBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (confirm(`Delete page "${pageName}"?`)) {
+                    delete config.pages[pageName];
+                    if (currentPage === pageName) currentPage = 'main';
+                    activeRectKey = null;
+                    renderPagesList();
+                    renderCanvas();
+                    updatePropertiesPanel();
+                }
+            };
+            delBtn.onmouseover = () => delBtn.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
+            delBtn.onmouseout = () => delBtn.style.backgroundColor = 'transparent';
+            li.appendChild(delBtn);
+        }
+
         if (pageName === currentPage) li.classList.add('active');
         li.onclick = () => {
             currentPage = pageName;
@@ -206,7 +287,6 @@ function renderPagesList() {
         };
         pagesList.appendChild(li);
         
-        // Select Options
         const opt = document.createElement('option');
         opt.value = pageName;
         opt.textContent = pageName;
@@ -226,13 +306,11 @@ function renderCanvas() {
         el.className = 'deck-rect';
         if (keyID === activeRectKey) el.classList.add('active');
         
-        // Convert exact physical coordinates to percentage based styling
         el.style.left = `${(rect.x / layout.width) * 100}%`;
         el.style.top = `${(rect.y / layout.height) * 100}%`;
         el.style.width = `${(rect.width / layout.width) * 100}%`;
         el.style.height = `${(rect.height / layout.height) * 100}%`;
         
-        // Load image if exists
         const actionData = pageData[keyID];
         if (actionData && actionData.image) {
             const sep = actionData.image.includes('?') ? '&' : '?';
@@ -241,7 +319,7 @@ function renderCanvas() {
         
         el.onclick = () => {
             activeRectKey = keyID;
-            renderCanvas(); // Update active class visually
+            renderCanvas();
             updatePropertiesPanel(rect, keyID, actionData);
         };
         
@@ -252,7 +330,6 @@ function renderCanvas() {
 function updatePropertiesPanelTitle(rect) {
     if (!activeRectKey) return;
     const t = i18n[currentLang];
-    
     let currentRect = rect;
     if (!currentRect) {
         if (activeRectKey.startsWith('extra_')) {
@@ -283,11 +360,18 @@ function updatePropertiesPanel(rect = null, keyID = null, actionData = null) {
     
     updatePropertiesPanelTitle(rect);
     
-    // Reset fields
     propAction.value = actionData ? actionData.type || "" : "";
     propPayload.value = actionData ? actionData.payload || "" : "";
     propAppSelect.value = actionData ? actionData.payload || "" : "";
     propPageSelect.value = actionData ? actionData.payload || "" : "";
+    propMediaSelect.value = actionData ? actionData.payload || "playpause" : "playpause";
+    propLabel.value = actionData ? actionData.label || "" : "";
+    
+    if (actionData && actionData.type === 'multi_action') {
+        renderMacroSteps(actionData.payload);
+    } else {
+        renderMacroSteps([]);
+    }
     
     if (actionData && actionData.image) {
         const sep = actionData.image.includes('?') ? '&' : '?';
@@ -308,9 +392,14 @@ function updatePayloadVisibility() {
     propPayload.style.display = 'none';
     propAppSelect.style.display = 'none';
     propPageSelect.style.display = 'none';
+    propMediaSelect.style.display = 'none';
     propPayloadGroup.style.display = 'block';
+    propMacroGroup.style.display = 'none';
     
-    if (action === 'open_app') {
+    if (action === 'multi_action') {
+        propPayloadGroup.style.display = 'none';
+        propMacroGroup.style.display = 'block';
+    } else if (action === 'open_app') {
         propPayloadLabel.textContent = t.payloadApp;
         propAppSelect.style.display = 'block';
     } else if (action === 'hotkey') {
@@ -319,11 +408,181 @@ function updatePayloadVisibility() {
     } else if (action === 'switch_page') {
         propPayloadLabel.textContent = t.payloadPage;
         propPageSelect.style.display = 'block';
-    } else if (action === 'clock') {
+    } else if (action === 'folder') {
+        propPayloadLabel.textContent = t.payloadFolder;
+        propPayload.style.display = 'block';
+    } else if (action === 'media') {
+        propPayloadLabel.textContent = t.payloadMedia;
+        propMediaSelect.style.display = 'block';
+    } else if (action === 'text') {
+        propPayloadLabel.textContent = t.payloadText;
+        propPayload.style.display = 'block';
+    } else if (action === 'clock' || action === 'back_button') {
         propPayloadGroup.style.display = 'none';
     } else {
         propPayloadGroup.style.display = 'none';
     }
+}
+
+function renderMacroSteps(steps = null) {
+    if (steps !== null) currentMacroSteps = Array.isArray(steps) ? [...steps] : [];
+    
+    macroStepsList.innerHTML = '';
+    const t = i18n[currentLang];
+    
+    currentMacroSteps.forEach((step, index) => {
+        const div = document.createElement('div');
+        div.className = 'macro-step';
+        
+        const remove = document.createElement('span');
+        remove.className = 'remove-step';
+        remove.innerHTML = '&times;';
+        remove.onclick = () => {
+            currentMacroSteps.splice(index, 1);
+            saveActiveRectState();
+            renderMacroSteps();
+        };
+        div.appendChild(remove);
+        
+        const select = document.createElement('select');
+        select.innerHTML = `
+            <option value="open_app"${step.type==='open_app'?' selected':''}>${t.actionOpenApp}</option>
+            <option value="hotkey"${step.type==='hotkey'?' selected':''}>${t.actionHotkey}</option>
+            <option value="media"${step.type==='media'?' selected':''}>${t.actionMedia}</option>
+            <option value="text"${step.type==='text'?' selected':''}>${t.actionText}</option>
+            <option value="delay"${step.type==='delay'?' selected':''}>${t.actionDelay}</option>
+        `;
+        select.onchange = (e) => {
+            step.type = e.target.value;
+            step.payload = "";
+            saveActiveRectState();
+            renderMacroSteps();
+        };
+        div.appendChild(select);
+        
+        if (step.type === 'open_app') {
+            const appSelect = document.createElement('select');
+            appSelect.innerHTML = propAppSelect.innerHTML;
+            appSelect.value = step.payload;
+            appSelect.onchange = (e) => { step.payload = e.target.value; saveActiveRectState(); };
+            div.appendChild(appSelect);
+        } else if (step.type === 'media') {
+            const mediaSelect = document.createElement('select');
+            mediaSelect.innerHTML = propMediaSelect.innerHTML;
+            mediaSelect.value = step.payload || 'playpause';
+            mediaSelect.onchange = (e) => { step.payload = e.target.value; saveActiveRectState(); };
+            div.appendChild(mediaSelect);
+            if(!step.payload) step.payload = 'playpause';
+        } else {
+            const inp = document.createElement('input');
+            inp.type = step.type === 'delay' ? 'number' : 'text';
+            inp.placeholder = step.type === 'delay' ? t.payloadDelay : '...';
+            inp.value = step.payload;
+            inp.onchange = (e) => { step.payload = e.target.value; saveActiveRectState(); };
+            div.appendChild(inp);
+        }
+        
+        macroStepsList.appendChild(div);
+    });
+}
+
+async function generateIconImage(iconName, labelText) {
+    if (!iconName) return null;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    
+    const gradient = ctx.createLinearGradient(0, 0, 0, 256);
+    gradient.addColorStop(0, '#1e293b');
+    gradient.addColorStop(1, '#0f172a');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 256, 256);
+    
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, 252, 252);
+    
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = `<i data-lucide="${iconName}"></i>`;
+    lucide.createIcons({ root: tempDiv });
+    const svgNode = tempDiv.querySelector('svg');
+    
+    if (svgNode) {
+        svgNode.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        svgNode.setAttribute('width', '128');
+        svgNode.setAttribute('height', '128');
+        svgNode.setAttribute('stroke', '#f8fafc');
+        
+        const svgString = svgNode.outerHTML;
+        const blob = new Blob([svgString], {type: 'image/svg+xml'});
+        const url = URL.createObjectURL(blob);
+        
+        await new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const yOffset = labelText ? -16 : 0;
+                ctx.drawImage(img, 64, 64 + yOffset, 128, 128);
+                URL.revokeObjectURL(url);
+                resolve();
+            };
+            img.src = url;
+        });
+    }
+    
+    if (labelText) {
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = '500 28px "Outfit", -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(labelText, 128, 220);
+    }
+    
+    const base64Image = canvas.toDataURL('image/png');
+    const res = await fetch('/api/upload_base64', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_data: base64Image })
+    });
+    const data = await res.json();
+    return data.path;
+}
+
+function populateIconGrid(query = '') {
+    iconGrid.innerHTML = '';
+    const q = query.toLowerCase();
+    const iconNames = Object.keys(lucide.icons);
+    
+    let count = 0;
+    for (const name of iconNames) {
+        const kebabName = name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+        
+        if (!q || kebabName.includes(q)) {
+            const div = document.createElement('div');
+            div.className = 'icon-item';
+            div.innerHTML = `<i data-lucide="${kebabName}"></i>`;
+            div.title = kebabName;
+            div.onclick = async () => {
+                iconModal.style.display = 'none';
+                if (activeRectKey) {
+                    const path = await generateIconImage(kebabName, propLabel.value);
+                    if (!config.pages[currentPage]) config.pages[currentPage] = {};
+                    if (!config.pages[currentPage][activeRectKey]) config.pages[currentPage][activeRectKey] = {};
+                    
+                    config.pages[currentPage][activeRectKey].image = path;
+                    config.pages[currentPage][activeRectKey].lucide_icon = kebabName;
+                    
+                    propImagePreview.src = path;
+                    propImagePreview.style.display = 'block';
+                    saveActiveRectState();
+                }
+            };
+            iconGrid.appendChild(div);
+            count++;
+            if (count > 250) break;
+        }
+    }
+    lucide.createIcons({ root: iconGrid });
 }
 
 async function saveActiveRectState() {
@@ -331,7 +590,6 @@ async function saveActiveRectState() {
     
     if (!config.pages[currentPage]) config.pages[currentPage] = {};
     const pageData = config.pages[currentPage];
-    
     if (!pageData[activeRectKey]) pageData[activeRectKey] = {};
     
     const action = propAction.value;
@@ -340,9 +598,61 @@ async function saveActiveRectState() {
     if (action === 'open_app') pageData[activeRectKey].payload = propAppSelect.value;
     else if (action === 'hotkey') pageData[activeRectKey].payload = propPayload.value;
     else if (action === 'switch_page') pageData[activeRectKey].payload = propPageSelect.value;
+    else if (action === 'media') pageData[activeRectKey].payload = propMediaSelect.value;
+    else if (action === 'text') pageData[activeRectKey].payload = propPayload.value;
+    else if (action === 'multi_action') pageData[activeRectKey].payload = currentMacroSteps;
+    else if (action === 'folder') {
+        const targetPage = propPayload.value.trim();
+        if (targetPage) {
+            pageData[activeRectKey].payload = targetPage;
+            if (!config.pages[targetPage]) {
+                config.pages[targetPage] = {}; // Auto-create folder page
+                renderPagesList();
+            }
+        }
+    }
     
-    // Check if auto-icon extraction needed
-    if (action === 'open_app' && propAppSelect.value) {
+    // Auto-Icons & Labels logic
+    const prevImage = pageData[activeRectKey].image;
+    let targetIcon = pageData[activeRectKey].lucide_icon;
+    let needsGen = false;
+    
+    if (action === 'folder' && !prevImage) {
+        targetIcon = 'folder';
+        needsGen = true;
+    } else if (action === 'back_button' && !prevImage) {
+        targetIcon = 'corner-up-left';
+        needsGen = true;
+    } else if (action === 'text' && !prevImage) {
+        targetIcon = 'type';
+        needsGen = true;
+    } else if (action === 'multi_action' && !prevImage) {
+        targetIcon = 'layers';
+        needsGen = true;
+    } else if (action === 'media' && !prevImage) {
+        const m = propMediaSelect.value;
+        if (m === 'playpause') targetIcon = 'play';
+        else if (m === 'nexttrack') targetIcon = 'skip-forward';
+        else if (m === 'prevtrack') targetIcon = 'skip-back';
+        else if (m === 'volumeup') targetIcon = 'volume-2';
+        else if (m === 'volumedown') targetIcon = 'volume-1';
+        else if (m === 'volumemute') targetIcon = 'volume-x';
+        needsGen = true;
+    } else if (targetIcon && pageData[activeRectKey].label !== propLabel.value) {
+        needsGen = true;
+    }
+    
+    pageData[activeRectKey].label = propLabel.value;
+    
+    if (needsGen && targetIcon) {
+        const path = await generateIconImage(targetIcon, propLabel.value);
+        pageData[activeRectKey].image = path;
+        pageData[activeRectKey].lucide_icon = targetIcon;
+        propImagePreview.src = path;
+        propImagePreview.style.display = 'block';
+    }
+    
+    if (action === 'open_app' && propAppSelect.value && !pageData[activeRectKey].lucide_icon) {
         try {
             const res = await fetch(`/api/extract_app_icon?app_path=${encodeURIComponent(propAppSelect.value)}`);
             if (res.ok) {
@@ -366,9 +676,28 @@ function setupEventListeners() {
         saveActiveRectState();
     });
 
-    propPayload.addEventListener('input', saveActiveRectState);
+    propPayload.addEventListener('change', saveActiveRectState);
+    propLabel.addEventListener('change', saveActiveRectState);
     propAppSelect.addEventListener('change', saveActiveRectState);
     propPageSelect.addEventListener('change', saveActiveRectState);
+    propMediaSelect.addEventListener('change', saveActiveRectState);
+
+    btnAddMacroStep.addEventListener('click', () => {
+        currentMacroSteps.push({ type: 'text', payload: '' });
+        saveActiveRectState();
+        renderMacroSteps();
+    });
+
+    btnChooseIcon.addEventListener('click', () => {
+        iconModal.style.display = 'block';
+        populateIconGrid('');
+    });
+    closeIconModal.addEventListener('click', () => {
+        iconModal.style.display = 'none';
+    });
+    iconSearch.addEventListener('input', (e) => {
+        populateIconGrid(e.target.value);
+    });
 
     btnNewPage.addEventListener('click', () => {
         const name = newPageName.value.trim();
@@ -404,17 +733,14 @@ function setupEventListeners() {
         }
     });
 
-    // Drag and Drop & Cropper
     propImageDropzone.addEventListener('dragover', e => {
         e.preventDefault();
         propImageDropzone.classList.add('dragover');
     });
-
     propImageDropzone.addEventListener('dragleave', e => {
         e.preventDefault();
         propImageDropzone.classList.remove('dragover');
     });
-
     propImageDropzone.addEventListener('drop', async e => {
         e.preventDefault();
         propImageDropzone.classList.remove('dragover');
@@ -422,6 +748,9 @@ function setupEventListeners() {
         
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             const file = e.dataTransfer.files[0];
+            if (config.pages[currentPage] && config.pages[currentPage][activeRectKey]) {
+                delete config.pages[currentPage][activeRectKey].lucide_icon;
+            }
             if (file.type === 'image/gif') {
                 try {
                     const res = await fetch('/api/upload_file', {
@@ -433,19 +762,15 @@ function setupEventListeners() {
                         body: file
                     });
                     const data = await res.json();
-                    
                     if (!config.pages[currentPage]) config.pages[currentPage] = {};
                     if (!config.pages[currentPage][activeRectKey]) config.pages[currentPage][activeRectKey] = {};
-                    
                     config.pages[currentPage][activeRectKey].image = data.path;
-                    
                     const reader = new FileReader();
                     reader.onload = (re) => {
                         propImagePreview.src = re.target.result;
                         propImagePreview.style.display = 'block';
                     };
                     reader.readAsDataURL(file);
-                    
                     renderCanvas();
                 } catch (err) {
                     console.error("GIF Upload failed", err);
@@ -456,7 +781,6 @@ function setupEventListeners() {
                 reader.onload = (e) => {
                     document.getElementById('crop-image').src = e.target.result;
                     document.getElementById('crop-modal').style.display = 'block';
-                    
                     let rect;
                     if (activeRectKey.startsWith('extra_')) {
                         const idx = parseInt(activeRectKey.split('_')[1]);
@@ -466,7 +790,6 @@ function setupEventListeners() {
                         rect = layout.rects.find(rt => rt.col == c && rt.row == r);
                     }
                     const ratio = rect ? rect.width / rect.height : 1;
-                    
                     if (cropper) cropper.destroy();
                     cropper = new Cropper(document.getElementById('crop-image'), {
                         aspectRatio: ratio,
@@ -485,7 +808,6 @@ function setupEventListeners() {
 
     document.getElementById('btn-apply-crop').addEventListener('click', async () => {
         if (!cropper || !activeRectKey) return;
-        
         let rect;
         if (activeRectKey.startsWith('extra_')) {
             const idx = parseInt(activeRectKey.split('_')[1]);
@@ -494,12 +816,10 @@ function setupEventListeners() {
             const [c, r] = activeRectKey.split('_');
             rect = layout.rects.find(rt => rt.col == c && rt.row == r);
         }
-        
         const canvas = cropper.getCroppedCanvas({
             width: rect ? rect.width : 256,
             height: rect ? rect.height : 256
         });
-        
         const base64Image = canvas.toDataURL('image/png');
         document.getElementById('crop-modal').style.display = 'none';
         
@@ -509,12 +829,9 @@ function setupEventListeners() {
             body: JSON.stringify({ image_data: base64Image })
         });
         const data = await res.json();
-        
         if (!config.pages[currentPage]) config.pages[currentPage] = {};
         if (!config.pages[currentPage][activeRectKey]) config.pages[currentPage][activeRectKey] = {};
-        
         config.pages[currentPage][activeRectKey].image = data.path;
-        
         propImagePreview.src = base64Image;
         propImagePreview.style.display = 'block';
         renderCanvas();
