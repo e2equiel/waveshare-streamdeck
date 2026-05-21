@@ -185,7 +185,10 @@ class WaveshareController:
                 self.config = config
                 # Create a black background
                 screen = Image.new('RGB', (self.device_width, self.device_height), color=(0, 0, 0))
+                
+                old_anim_state = {(elem["x"], elem["y"]): elem["current_frame"] for elem in self.animated_elements} if hasattr(self, 'animated_elements') else {}
                 self.animated_elements = []
+
                 
                 # Render elements for current page
                 page_config = config.get("pages", {}).get(self.current_page, {})
@@ -213,173 +216,55 @@ class WaveshareController:
                         w, h = rect["width"], rect["height"]
                         x, y = rect["x"], rect["y"]
                         
-                        from PIL import ImageDraw
-                        bg_config = action.get("background")
-                        if bg_config:
-                            if bg_config.get("type") == "solid":
-                                bg_color = bg_config.get("color", "#0f172a")
-                                draw_bg = Image.new("RGB", (w, h), bg_color)
-                                screen.paste(draw_bg, (x, y))
-                            elif bg_config.get("type") == "gradient":
-                                color1 = bg_config.get("color1", "#0f172a")
-                                color2 = bg_config.get("color2", "#1e293b")
-                                draw_bg = Image.new("RGB", (w, h), color1)
-                                try:
-                                    r1, g1, b1 = int(color1[1:3], 16), int(color1[3:5], 16), int(color1[5:7], 16)
-                                    r2, g2, b2 = int(color2[1:3], 16), int(color2[3:5], 16), int(color2[5:7], 16)
-                                    bg_draw = ImageDraw.Draw(draw_bg)
-                                    for y_grad in range(h):
-                                        r = int(r1 + (r2 - r1) * y_grad / h)
-                                        g = int(g1 + (g2 - g1) * y_grad / h)
-                                        b = int(b1 + (b2 - b1) * y_grad / h)
-                                        bg_draw.line([(0, y_grad), (w, y_grad)], fill=(r,g,b))
-                                except:
-                                    pass
-                                screen.paste(draw_bg, (x, y))
+                        from renderer import render_action
+                        img_path = action.get("image", "")
                         
-                        if action.get("type") in ("clock", "widget"):
-                            import time
-                            import psutil
-                            from PIL import ImageDraw, ImageFont
+                        # Handle GIF animation background
+                        if img_path and img_path.endswith('.gif') and action.get("type") not in ("clock", "widget"):
+                            # Draw just the background for the GIF
+                            bg_icon = render_action({"background": action.get("background")}, w, h, self.image_cache)
+                            screen.paste(bg_icon, (x, y))
                             
-                            payload = action.get("payload", {})
-                            if not isinstance(payload, dict) or action.get("type") == "clock":
-                                payload = {
-                                    "background": {"type": "solid", "color": "#0f172a"},
-                                    "elements": [
-                                        {"type": "text", "content": "{time}", "x": 50, "y": 40, "fontSize": int(h*0.4), "color": "#f8fafc", "align": "center"},
-                                        {"type": "text", "content": "{date}", "x": 50, "y": 75, "fontSize": int(h*0.15), "color": "#94a3b8", "align": "center"}
-                                    ]
-                                }
-                                
-                            bg_config = payload.get("background", {"type": "solid", "color": "#0f172a"})
-                            if bg_config.get("type") == "gradient":
-                                color1 = bg_config.get("color1", "#0f172a")
-                                color2 = bg_config.get("color2", "#1e293b")
-                                icon = Image.new('RGB', (w, h), color=color1)
-                                draw = ImageDraw.Draw(icon)
+                            cache_key = (img_path, w, h)
+                            if cache_key not in self.image_cache:
                                 try:
-                                    r1, g1, b1 = int(color1[1:3], 16), int(color1[3:5], 16), int(color1[5:7], 16)
-                                    r2, g2, b2 = int(color2[1:3], 16), int(color2[3:5], 16), int(color2[5:7], 16)
-                                    for y_grad in range(h):
-                                        r = int(r1 + (r2 - r1) * y_grad / h)
-                                        g = int(g1 + (g2 - g1) * y_grad / h)
-                                        b = int(b1 + (b2 - b1) * y_grad / h)
-                                        draw.line([(0, y_grad), (w, y_grad)], fill=(r,g,b))
-                                except:
-                                    pass
-                            else:
-                                icon = Image.new('RGB', (w, h), color=bg_config.get("color", "#0f172a"))
-                                
-                            draw = ImageDraw.Draw(icon)
-                            
-                            for el in payload.get("elements", []):
-                                if el.get("type") == "text":
-                                    content = el.get("content", "")
-                                    if "{time}" in content: content = content.replace("{time}", time.strftime("%H:%M"))
-                                    if "{date}" in content: content = content.replace("{date}", time.strftime("%d %b"))
-                                    if "{cpu}" in content: content = content.replace("{cpu}", str(int(psutil.cpu_percent(interval=None))))
-                                    if "{ram}" in content: content = content.replace("{ram}", str(int(psutil.virtual_memory().percent)))
-                                    
-                                    f_size = el.get("fontSize", 20)
-                                    try:
-                                        font = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", int(f_size))
-                                    except:
-                                        font = ImageFont.load_default()
+                                    resolved_img_path = img_path
+                                    if img_path.startswith('/static/uploads/'):
+                                        resolved_img_path = os.path.abspath(img_path.lstrip('/'))
                                         
-                                    abs_x = w * (el.get("x", 50) / 100.0)
-                                    abs_y = h * (el.get("y", 50) / 100.0)
-                                    
-                                    align = el.get("align", "center")
-                                    anchor = "mm"
-                                    if align == "left": anchor = "lm"
-                                    elif align == "right": anchor = "rm"
-                                    
-                                    draw.text((abs_x, abs_y), content, fill=el.get("color", "#ffffff"), anchor=anchor, font=font)
+                                    img = Image.open(resolved_img_path)
+                                    frames = []
+                                    try:
+                                        while True:
+                                            frame = img.copy().convert("RGBA")
+                                            frame = frame.resize((w, h), Image.Resampling.LANCZOS)
+                                            frames.append(frame)
+                                            img.seek(len(frames))
+                                    except EOFError:
+                                        pass
+                                    self.image_cache[cache_key] = {"type": "anim", "frames": frames}
+                                except Exception as e:
+                                    print(f"Error loading GIF {img_path}: {e}")
                             
+                            if cache_key in self.image_cache:
+                                cached = self.image_cache[cache_key]
+                                if cached["type"] == "anim":
+                                    current_frame = old_anim_state.get((x, y), 0)
+                                    if current_frame >= len(cached["frames"]):
+                                        current_frame = 0
+                                    self.animated_elements.append({
+                                        "frames": cached["frames"],
+                                        "durations": [0.1] * len(cached["frames"]),
+                                        "current_frame": current_frame,
+                                        "x": x,
+                                        "y": y,
+                                        "next_update": time.time() + 0.1
+                                    })
+                        else:
+                            # Render standard button or widget via renderer.py
+                            icon = render_action(action, w, h, self.image_cache)
                             screen.paste(icon, (x, y))
-                            continue
-                            
-                        img_path = action.get("image")
-                        if not img_path:
-                            continue
-                            
-                        cache_key = (img_path, w, h)
-                        
-                        # Use cached processed image if available
-                        if cache_key in self.image_cache:
-                            cached = self.image_cache[cache_key]
-                            if cached["type"] == "anim":
-                                frames = cached["frames"]
-                                durations = cached["durations"]
-                                self.animated_elements.append({
-                                    "frames": frames,
-                                    "durations": durations,
-                                    "x": x,
-                                    "y": y,
-                                    "current_frame": 0,
-                                    "next_update": time.time() + durations[0]
-                                })
-                                screen.paste(frames[0], (x, y))
-                            else:
-                                screen.paste(cached["image"], (x, y))
-                            continue
-                            
-                        icon = None
-                        
-                        import urllib.parse
-                        if img_path.startswith('/api/app_icon?app_path='):
-                            app_path = urllib.parse.unquote(img_path.split('app_path=')[1])
-                            icon_bytes = get_mac_app_icon_bytes(app_path)
-                            if icon_bytes:
-                                icon = Image.open(io.BytesIO(icon_bytes))
-                        elif img_path.startswith('/static/uploads/'):
-                            full_path = os.path.abspath(img_path.lstrip('/'))
-                            if os.path.exists(full_path):
-                                icon = Image.open(full_path)
-                        elif os.path.exists(img_path):
-                            icon = Image.open(img_path)
-                            
-                        if icon:
-                            from PIL import ImageOps
-                            is_animated = getattr(icon, "is_animated", False)
-                            
-                            if is_animated:
-                                frames = []
-                                durations = []
-                                for frame_idx in range(icon.n_frames):
-                                    icon.seek(frame_idx)
-                                    frame_img = icon.convert('RGB')
-                                    frame_img = ImageOps.fit(frame_img, (w, h), Image.Resampling.LANCZOS, centering=(0.5, 0.5))
-                                    frames.append(frame_img)
-                                    raw_duration = icon.info.get('duration', 100)
-                                    if raw_duration <= 20:
-                                        raw_duration = 100
-                                    durations.append(raw_duration / 1000.0) # ms to sec
-                                
-                                # Save to asset cache
-                                if len(self.image_cache) > 100: self.image_cache.clear()
-                                self.image_cache[cache_key] = {"type": "anim", "frames": frames, "durations": durations}
-                                
-                                self.animated_elements.append({
-                                    "frames": frames,
-                                    "durations": durations,
-                                    "x": x,
-                                    "y": y,
-                                    "current_frame": 0,
-                                    "next_update": time.time() + durations[0]
-                                })
-                                # Paste first frame to static background just in case
-                                screen.paste(frames[0], (x, y))
-                            else:
-                                icon = icon.convert('RGB')
-                                icon = ImageOps.fit(icon, (w, h), Image.Resampling.LANCZOS, centering=(0.5, 0.5))
-                                
-                                # Save to asset cache
-                                if len(self.image_cache) > 100: self.image_cache.clear()
-                                self.image_cache[cache_key] = {"type": "static", "image": icon}
-                                
-                                screen.paste(icon, (x, y))
+
                             
                     except Exception as e:
                         logger.error(f"Failed to render icon for {key}: {e}")

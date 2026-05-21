@@ -526,3 +526,32 @@ input[type="range"] {
     .canvas-container { padding: 20px 10px; }
     .sidebar-footer { margin-top: 16px; }
 }
+
+/* Custom Color Picker */
+.cp-popup {
+    position: absolute;
+    background: #1e293b;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 10px;
+    width: 220px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    z-index: 10000;
+}
+.cp-swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+.cp-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.2);
+    transition: transform 0.1s;
+}
+.cp-swatch:hover {
+    transform: scale(1.1);
+}

@@ -110,9 +110,18 @@
                         <input type="color" id="prop-bg-grad2" value="#1e293b" style="flex: 1; height: 40px; padding: 0; border: none; border-radius: 6px; cursor: pointer;">
                     </div>
 
-                    <div style="display:flex; gap: 10px; margin-top: 20px;">
-                        <button id="btn-clear-image" class="btn secondary" style="flex:1; font-size: 0.85rem;">Clear Image</button>
-                        <button id="btn-clear-action" class="btn secondary" style="flex:1; font-size: 0.85rem; color: #ef4444; border-color: rgba(239,68,68,0.3);">Clear Button</button>
+                    <div class="form-group" style="display:flex; justify-content:space-between; margin-top: 15px;">
+                        <button id="btn-edit-widget" class="btn primary" style="width: 100%; display:none;">Edit Widget</button>
+                    </div>
+
+                    <div style="display:flex; gap: 8px; margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
+                        <button id="btn-copy-action" class="btn secondary" style="flex:1; font-size:0.8rem;" title="Copy to Clipboard"><i data-lucide="copy" style="width:16px;"></i> Copy</button>
+                        <button id="btn-paste-action" class="btn secondary" style="flex:1; font-size:0.8rem;" disabled title="Paste from Clipboard"><i data-lucide="clipboard-paste" style="width:16px;"></i> Paste</button>
+                        <button id="btn-duplicate-action" class="btn secondary" style="flex:1; font-size:0.8rem;" title="Duplicate in place"><i data-lucide="copy-plus" style="width:16px;"></i> Dup</button>
+                    </div>
+
+                    <div style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
+                        <button id="btn-clear-btn" class="btn secondary" style="width: 100%; color: #ef4444; border-color: rgba(239, 68, 68, 0.3);" data-i18n="btnClearBtn">Clear Button</button>
                     </div>
                 </div>
                 <div id="properties-empty" class="empty-state">
@@ -149,6 +158,11 @@
                     <button id="btn-new-page" class="btn secondary icon-btn">+</button>
                 </div>
                 
+                <hr>
+                
+                <h2>Widget Library</h2>
+                <div id="saved-widgets-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom: 20px; max-height: 200px; overflow-y: auto; padding-right: 5px;"></div>
+                
                 <div id="settings-panel" class="tab-pane">
                     <h2 data-i18n="settingsTitle">Settings</h2>
                     <div class="form-group">
@@ -162,6 +176,14 @@
                     </p>
                     <div id="smart-profiles-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom: 10px; max-height: 250px; overflow-y: auto; padding-right: 5px;"></div>
                     <button id="btn-add-profile" class="btn secondary" style="width: 100%; font-size: 0.9rem;" data-i18n="btnAddProfile">+ Add Smart Profile</button>
+                </div>
+
+                <div id="widgets-panel" class="tab-pane" style="display:none;">
+                    <h2 style="margin-bottom: 15px;">Widget Library</h2>
+                    <p style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 15px;">
+                        Click a saved widget to load it into the selected button.
+                    </p>
+                    <div id="saved-widgets-list" style="display:flex; flex-direction:column; gap:8px; max-height: 400px; overflow-y: auto; padding-right: 5px;"></div>
                 </div>
                 
                 <div class="sidebar-footer">
@@ -195,11 +217,43 @@
                     <button class="btn secondary" id="w-add-cpu" style="justify-content: flex-start;">+ CPU % ({cpu})</button>
                     <button class="btn secondary" id="w-add-ram" style="justify-content: flex-start;">+ RAM % ({ram})</button>
                     <button class="btn secondary" id="w-add-text" style="justify-content: flex-start;">+ Custom Text</button>
+                    <div style="display:flex; gap:5px;">
+                        <button class="btn secondary" id="w-add-analog" style="flex:1; padding:6px; font-size:0.75rem;">+ Analog</button>
+                        <button class="btn secondary" id="w-add-cpu-gauge" style="flex:1; padding:6px; font-size:0.75rem;">+ CPU G.</button>
+                        <button class="btn secondary" id="w-add-ram-gauge" style="flex:1; padding:6px; font-size:0.75rem;">+ RAM G.</button>
+                    </div>
                     <hr style="border-color: rgba(255,255,255,0.1); margin: 10px 0;">
                     <label style="font-size: 0.85rem; color: #94a3b8;">Selected Element</label>
                     <input type="text" id="w-el-text" placeholder="Content..." style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 8px; border-radius: 4px;">
                     <input type="color" id="w-el-color" style="width: 100%; height: 35px; border: none; border-radius: 4px; cursor: pointer;">
-                    <input type="number" id="w-el-size" placeholder="Font Size (e.g. 20)" style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 8px; border-radius: 4px;">
+                    
+                    <div style="display:flex; gap: 5px;">
+                        <input type="number" id="w-el-size" placeholder="Size %" style="flex:1; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 8px; border-radius: 4px;" title="Font size as % of height">
+                        <select id="w-el-align" style="flex:1; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 8px; border-radius: 4px;">
+                            <option value="left">Left</option>
+                            <option value="center">Center</option>
+                            <option value="right">Right</option>
+                        </select>
+                    </div>
+
+                    <div style="display:flex; gap: 5px;">
+                        <input type="number" id="w-el-stroke" placeholder="Stroke" style="flex:1; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 8px; border-radius: 4px;" title="Stroke width">
+                        <input type="color" id="w-el-stroke-color" style="flex:1; height: 35px; border: none; border-radius: 4px; cursor: pointer;" value="#000000" title="Stroke Color">
+                    </div>
+                    
+                    <div style="display:flex; gap: 5px;">
+                        <input type="number" id="w-el-shadow-x" placeholder="Sh. X" style="flex:1; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 8px; border-radius: 4px;" title="Shadow Offset X">
+                        <input type="number" id="w-el-shadow-y" placeholder="Sh. Y" style="flex:1; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 8px; border-radius: 4px;" title="Shadow Offset Y">
+                        <input type="color" id="w-el-shadow-color" style="flex:1; height: 35px; border: none; border-radius: 4px; cursor: pointer;" value="#000000" title="Shadow Color">
+                    </div>
+
+                    <select id="w-el-font" style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 8px; border-radius: 4px;">
+                        <option value="Outfit">Outfit</option>
+                        <option value="Roboto">Roboto</option>
+                        <option value="Inter">Inter</option>
+                        <option value="Montserrat">Montserrat</option>
+                    </select>
+
                     <button class="btn secondary" id="w-el-delete" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.3);">Delete Element</button>
                 </div>
                 <!-- Canvas -->
@@ -210,6 +264,7 @@
                 </div>
             </div>
             <div style="margin-top: 20px; display:flex; justify-content: flex-end; gap: 10px;">
+                <button class="btn secondary" id="btn-save-to-lib" style="margin-right:auto;">Save to Library</button>
                 <button class="btn secondary" id="btn-cancel-widget">Cancel</button>
                 <button class="btn primary" id="btn-save-widget">Save Widget</button>
             </div>
@@ -232,6 +287,16 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="app.js"></script>
+    <!-- Custom Color Picker Popup -->
+    <div id="custom-color-picker" class="cp-popup" style="display:none;">
+        <div class="cp-swatches" id="cp-swatches"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
+            <span style="font-size:0.8rem; color:#94a3b8;">Custom Color</span>
+            <input type="color" id="cp-native" style="width: 24px; height: 24px; padding:0; border:none; border-radius:4px; cursor:pointer; background:transparent;">
+        </div>
+        <button id="cp-add" class="btn secondary" style="width:100%; margin-top:10px; font-size:0.8rem; padding: 4px;">+ Add to Palette</button>
+    </div>
+
+    <script src="/static/app.js"></script>
 </body>
 </html>

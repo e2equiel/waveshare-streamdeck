@@ -353,5 +353,26 @@ async def upload_file(request: Request):
         logger.error(f"File upload error: {e}")
         raise HTTPException(status_code=400, detail="File upload failed")
 
+@app.post("/api/preview_button")
+async def preview_button(request: Request):
+    data = await request.json()
+    action = data.get("action", {})
+    w = data.get("width", 120)
+    h = data.get("height", 120)
+    
+    from renderer import render_action
+    import base64
+    import io
+    
+    try:
+        icon = render_action(action, w, h, {})
+        buffered = io.BytesIO()
+        icon.save(buffered, format="JPEG", quality=85)
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        return {"image": f"data:image/jpeg;base64,{img_str}"}
+    except Exception as e:
+        logger.error(f"Preview error: {e}")
+        return {"error": str(e)}
+
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
