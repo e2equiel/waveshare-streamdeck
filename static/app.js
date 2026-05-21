@@ -23,7 +23,7 @@ const i18n = {
         actionMedia: "Media Control",
         actionText: "Type Text",
         actionMulti: "Multi-Action (Macro)",
-        actionClock: "Clock Widget",
+        actionWidget: "Custom Widget (Clock/Stats)",
         payloadLabel: "Payload",
         payloadApp: "Application",
         payloadHotkey: "Keys (e.g. command+c)",
@@ -82,7 +82,7 @@ const i18n = {
         actionMedia: "Control Multimedia",
         actionText: "Escribir Texto",
         actionMulti: "Multi-Acción (Macro)",
-        actionClock: "Reloj",
+        actionWidget: "Widget Custom (Reloj/Métricas)",
         payloadLabel: "Carga Útil",
         payloadApp: "Aplicación",
         payloadHotkey: "Teclas (ej. command+c)",
@@ -162,26 +162,57 @@ const propImageDropzone = document.getElementById("prop-image-dropzone");
 const propImagePreview = document.getElementById("prop-image-preview");
 const btnChooseIcon = document.getElementById("btn-choose-icon");
 
+// Styling UI
+const propIconColor = document.getElementById("prop-icon-color");
+const propBgType = document.getElementById("prop-bg-type");
+const propBgSolidGroup = document.getElementById("prop-bg-solid-group");
+const propBgGradientGroup = document.getElementById("prop-bg-gradient-group");
+const propBgColor = document.getElementById("prop-bg-color");
+const propBgGrad1 = document.getElementById("prop-bg-grad1");
+const propBgGrad2 = document.getElementById("prop-bg-grad2");
+const btnClearImage = document.getElementById("btn-clear-image");
+const btnClearAction = document.getElementById("btn-clear-action");
+
 const iconModal = document.getElementById("icon-modal");
 const closeIconModal = document.getElementById("close-icon-modal");
 const iconSearch = document.getElementById("icon-search");
 const iconGrid = document.getElementById("icon-grid");
 
+// Widget Editor UI
+const widgetModal = document.getElementById("widget-modal");
+const widgetCanvas = document.getElementById("widget-canvas");
+const wElText = document.getElementById("w-el-text");
+const wElColor = document.getElementById("w-el-color");
+const wElSize = document.getElementById("w-el-size");
+const wElDelete = document.getElementById("w-el-delete");
+const btnSaveWidget = document.getElementById("btn-save-widget");
+const btnCancelWidget = document.getElementById("btn-cancel-widget");
+let currentWidgetElements = [];
+let selectedWidgetElIndex = -1;
+
 // Smart Profiles DOM
 const smartProfilesList = document.getElementById("smart-profiles-list");
 const btnAddProfile = document.getElementById("btn-add-profile");
 
-// i18n Translator
 function applyTranslations() {
     const t = i18n[currentLang];
     document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
         if (t[key]) el.textContent = t[key];
     });
-    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-        const key = el.getAttribute('data-i18n-placeholder');
-        if (t[key]) el.placeholder = t[key];
-    });
+    
+    // Convert 'clock' options to 'widget' options dynamically in the Action Select
+    let widgetOpt = propAction.querySelector('option[value="widget"]');
+    if (!widgetOpt) {
+        // Migration: Remove old clock option if exists, add widget option
+        const clockOpt = propAction.querySelector('option[value="clock"]');
+        if (clockOpt) clockOpt.remove();
+        widgetOpt = document.createElement('option');
+        widgetOpt.value = 'widget';
+        propAction.appendChild(widgetOpt);
+    }
+    widgetOpt.textContent = t.actionWidget;
+    
     if (activeRectKey) updatePropertiesPanelTitle();
     updatePayloadVisibility();
     if (activeRectKey && propAction.value === 'multi_action') renderMacroSteps();
@@ -256,6 +287,16 @@ async function fetchConfig() {
     if (!config.pages) config.pages = { main: {} };
     if (!config.settings) config.settings = { brightness: 50 };
     if (!config.smart_profiles) config.smart_profiles = {};
+    
+    // Migrate old clock to widget
+    for (const page in config.pages) {
+        for (const key in config.pages[page]) {
+            if (config.pages[page][key].type === 'clock') {
+                config.pages[page][key].type = 'widget';
+            }
+        }
+    }
+    
     brightnessSlider.value = config.settings.brightness;
 }
 
@@ -290,14 +331,12 @@ function renderSmartProfiles() {
             if (app.name === appName) found = true;
             appSelect.appendChild(opt);
         });
-        
         if (!found && appName) {
             const opt = document.createElement('option');
             opt.value = appName;
             opt.textContent = appName + " (Custom)";
             appSelect.appendChild(opt);
         }
-        
         appSelect.value = appName;
         appSelect.onchange = (e) => {
             const newName = e.target.value.trim();
@@ -355,8 +394,6 @@ function renderPagesList() {
                     renderSmartProfiles();
                 }
             };
-            delBtn.onmouseover = () => delBtn.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
-            delBtn.onmouseout = () => delBtn.style.backgroundColor = 'transparent';
             li.appendChild(delBtn);
         }
 
@@ -377,6 +414,9 @@ function renderPagesList() {
     }
 }
 
+// Drag and Drop Button Grid Variables
+let dragSourceKey = null;
+
 function renderCanvas() {
     deckPreview.innerHTML = '';
     const pageData = config.pages[currentPage] || {};
@@ -384,6 +424,7 @@ function renderCanvas() {
     layout.rects.forEach((rect, index) => {
         const isKey = rect.isKey;
         const keyID = isKey ? `${rect.col}_${rect.row}` : `extra_${index}`;
+        const actionData = pageData[keyID];
         
         const el = document.createElement('div');
         el.className = 'deck-rect';
@@ -394,10 +435,72 @@ function renderCanvas() {
         el.style.width = `${(rect.width / layout.width) * 100}%`;
         el.style.height = `${(rect.height / layout.height) * 100}%`;
         
-        const actionData = pageData[keyID];
-        if (actionData && actionData.image) {
-            const sep = actionData.image.includes('?') ? '&' : '?';
-            el.style.backgroundImage = `url('${actionData.image}${sep}t=${Date.now()}')`;
+        // Render background gradient if exists
+        let hasBg = false;
+        let bgConfig = actionData ? actionData.background : null;
+        if (bgConfig) {
+            hasBg = true;
+            if (bgConfig.type === 'solid') {
+                el.style.backgroundColor = bgConfig.color;
+                el.style.backgroundImage = 'none';
+            } else if (bgConfig.type === 'gradient') {
+                el.style.backgroundImage = `linear-gradient(180deg, ${bgConfig.color1}, ${bgConfig.color2})`;
+            }
+        } else {
+            el.style.backgroundColor = 'transparent';
+            el.style.backgroundImage = 'none';
+        }
+
+        // Render preview icon/widget
+        if (actionData) {
+            if (actionData.type === 'widget') {
+                el.innerHTML = '<div style="display:flex; height:100%; width:100%; align-items:center; justify-content:center; color:rgba(255,255,255,0.5); font-size:12px;">{WIDGET}</div>';
+            } else if (actionData.image) {
+                const sep = actionData.image.includes('?') ? '&' : '?';
+                const imgUrl = `url('${actionData.image}${sep}t=${Date.now()}')`;
+                if (bgConfig && bgConfig.type === 'gradient') {
+                    el.style.backgroundImage = `${imgUrl}, linear-gradient(180deg, ${bgConfig.color1}, ${bgConfig.color2})`;
+                } else {
+                    el.style.backgroundImage = imgUrl;
+                }
+                el.style.backgroundSize = 'contain';
+                el.style.backgroundPosition = 'center';
+                el.style.backgroundRepeat = 'no-repeat';
+            }
+        }
+        
+        // Drag and Drop Logic
+        if (isKey) {
+            el.draggable = true;
+            el.ondragstart = (e) => {
+                dragSourceKey = keyID;
+                e.dataTransfer.effectAllowed = "move";
+                el.style.opacity = '0.5';
+            };
+            el.ondragover = (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+            };
+            el.ondrop = (e) => {
+                e.preventDefault();
+                el.style.opacity = '1';
+                if (dragSourceKey && dragSourceKey !== keyID) {
+                    // Swap logic
+                    const temp = config.pages[currentPage][keyID];
+                    config.pages[currentPage][keyID] = config.pages[currentPage][dragSourceKey];
+                    if (temp) {
+                        config.pages[currentPage][dragSourceKey] = temp;
+                    } else {
+                        delete config.pages[currentPage][dragSourceKey];
+                    }
+                    if (activeRectKey === dragSourceKey) activeRectKey = keyID;
+                    else if (activeRectKey === keyID) activeRectKey = dragSourceKey;
+                    dragSourceKey = null;
+                    renderCanvas();
+                    updatePropertiesPanel();
+                }
+            };
+            el.ondragend = () => { el.style.opacity = '1'; };
         }
         
         el.onclick = () => {
@@ -444,11 +547,32 @@ function updatePropertiesPanel(rect = null, keyID = null, actionData = null) {
     updatePropertiesPanelTitle(rect);
     
     propAction.value = actionData ? actionData.type || "" : "";
-    propPayload.value = actionData ? actionData.payload || "" : "";
-    propAppSelect.value = actionData ? actionData.payload || "" : "";
-    propPageSelect.value = actionData ? actionData.payload || "" : "";
-    propMediaSelect.value = actionData ? actionData.payload || "playpause" : "playpause";
+    propPayload.value = actionData ? (typeof actionData.payload === 'string' ? actionData.payload : "") : "";
+    propAppSelect.value = actionData ? (typeof actionData.payload === 'string' ? actionData.payload : "") : "";
+    propPageSelect.value = actionData ? (typeof actionData.payload === 'string' ? actionData.payload : "") : "";
+    propMediaSelect.value = actionData ? (typeof actionData.payload === 'string' ? actionData.payload : "playpause") : "playpause";
     propLabel.value = actionData ? actionData.label || "" : "";
+    propIconColor.value = actionData && actionData.icon_color ? actionData.icon_color : "#ffffff";
+    
+    // Background properties
+    if (actionData && actionData.background) {
+        propBgType.value = actionData.background.type;
+        if (actionData.background.type === 'solid') {
+            propBgColor.value = actionData.background.color || "#0f172a";
+            propBgSolidGroup.style.display = 'block';
+            propBgGradientGroup.style.display = 'none';
+        } else {
+            propBgGrad1.value = actionData.background.color1 || "#0f172a";
+            propBgGrad2.value = actionData.background.color2 || "#1e293b";
+            propBgSolidGroup.style.display = 'none';
+            propBgGradientGroup.style.display = 'flex';
+        }
+    } else {
+        propBgType.value = 'solid';
+        propBgColor.value = '#0f172a';
+        propBgSolidGroup.style.display = 'block';
+        propBgGradientGroup.style.display = 'none';
+    }
     
     if (actionData && actionData.type === 'multi_action') {
         renderMacroSteps(actionData.payload);
@@ -456,7 +580,7 @@ function updatePropertiesPanel(rect = null, keyID = null, actionData = null) {
         renderMacroSteps([]);
     }
     
-    if (actionData && actionData.image) {
+    if (actionData && actionData.image && actionData.type !== 'widget') {
         const sep = actionData.image.includes('?') ? '&' : '?';
         propImagePreview.src = `${actionData.image}${sep}t=${Date.now()}`;
         propImagePreview.style.display = 'block';
@@ -479,6 +603,9 @@ function updatePayloadVisibility() {
     propPayloadGroup.style.display = 'block';
     propMacroGroup.style.display = 'none';
     
+    const wBtn = document.getElementById('btn-open-widget-editor');
+    if (wBtn) wBtn.remove();
+    
     if (action === 'multi_action') {
         propPayloadGroup.style.display = 'none';
         propMacroGroup.style.display = 'block';
@@ -500,8 +627,16 @@ function updatePayloadVisibility() {
     } else if (action === 'text') {
         propPayloadLabel.textContent = t.payloadText;
         propPayload.style.display = 'block';
-    } else if (action === 'clock' || action === 'back_button') {
-        propPayloadGroup.style.display = 'none';
+    } else if (action === 'widget') {
+        propPayloadGroup.style.display = 'block';
+        propPayloadLabel.textContent = "Widget Builder";
+        const btn = document.createElement('button');
+        btn.id = 'btn-open-widget-editor';
+        btn.className = 'btn primary';
+        btn.style.width = '100%';
+        btn.textContent = "Open Editor";
+        btn.onclick = openWidgetEditor;
+        propPayloadGroup.appendChild(btn);
     } else {
         propPayloadGroup.style.display = 'none';
     }
@@ -569,7 +704,218 @@ function renderMacroSteps(steps = null) {
     });
 }
 
-async function generateIconImage(iconName, labelText) {
+// Visual Widget Editor Logic
+function openWidgetEditor() {
+    widgetModal.style.display = 'block';
+    
+    // Determine dimensions of current rect
+    let rect;
+    if (activeRectKey.startsWith('extra_')) {
+        const idx = parseInt(activeRectKey.split('_')[1]);
+        rect = layout.rects[idx];
+    } else {
+        const [c, r] = activeRectKey.split('_');
+        rect = layout.rects.find(rt => rt.col == c && rt.row == r);
+    }
+    
+    // Adjust canvas aspect ratio and fit
+    const ratio = rect.width / rect.height;
+    const maxW = 540;
+    const maxH = 400;
+    
+    let canvasW = maxW;
+    let canvasH = maxW / ratio;
+    if (canvasH > maxH) {
+        canvasH = maxH;
+        canvasW = maxH * ratio;
+    }
+    
+    widgetCanvas.style.width = canvasW + 'px';
+    widgetCanvas.style.height = canvasH + 'px';
+    
+    // Apply background
+    if (propBgType.value === 'solid') {
+        widgetCanvas.style.background = propBgColor.value;
+    } else {
+        widgetCanvas.style.background = `linear-gradient(180deg, ${propBgGrad1.value}, ${propBgGrad2.value})`;
+    }
+    
+    // Load elements
+    let payload = {};
+    if (config.pages[currentPage] && config.pages[currentPage][activeRectKey]) {
+        payload = config.pages[currentPage][activeRectKey].payload || {};
+    }
+    currentWidgetElements = payload.elements || [];
+    selectedWidgetElIndex = -1;
+    renderWidgetCanvas();
+}
+
+function renderWidgetCanvas() {
+    widgetCanvas.innerHTML = '';
+    const cw = widgetCanvas.offsetWidth;
+    const ch = widgetCanvas.offsetHeight;
+    
+    currentWidgetElements.forEach((el, index) => {
+        const div = document.createElement('div');
+        div.style.position = 'absolute';
+        div.style.left = el.x + '%';
+        div.style.top = el.y + '%';
+        div.style.transform = 'translate(-50%, -50%)'; // center origin
+        div.style.color = el.color || '#ffffff';
+        div.style.fontSize = Math.max(12, (el.fontSize || 20) * (ch / 100)) + 'px';
+        div.style.fontFamily = 'Outfit, sans-serif';
+        div.style.fontWeight = '500';
+        div.style.whiteSpace = 'nowrap';
+        div.style.userSelect = 'none';
+        div.style.cursor = 'move';
+        div.textContent = el.content;
+        
+        if (index === selectedWidgetElIndex) {
+            div.style.outline = '2px solid #3b82f6';
+            div.style.outlineOffset = '4px';
+        }
+        
+        // Drag logic inside canvas
+        div.onmousedown = (e) => {
+            selectedWidgetElIndex = index;
+            
+            Array.from(widgetCanvas.children).forEach((child, i) => {
+                if (i === index) {
+                    child.style.outline = '2px solid #3b82f6';
+                    child.style.outlineOffset = '4px';
+                } else {
+                    child.style.outline = 'none';
+                }
+            });
+            
+            updateWidgetTools();
+            
+            let startX = e.clientX;
+            let startY = e.clientY;
+            let startElX = el.x;
+            let startElY = el.y;
+            
+            const onMove = (ev) => {
+                const dx = ((ev.clientX - startX) / cw) * 100;
+                const dy = ((ev.clientY - startY) / ch) * 100;
+                el.x = Math.max(0, Math.min(100, startElX + dx));
+                el.y = Math.max(0, Math.min(100, startElY + dy));
+                div.style.left = el.x + '%';
+                div.style.top = el.y + '%';
+            };
+            
+            const onUp = () => {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            };
+            
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        };
+        
+        widgetCanvas.appendChild(div);
+    });
+    updateWidgetTools();
+}
+
+function updateWidgetTools() {
+    if (selectedWidgetElIndex >= 0 && selectedWidgetElIndex < currentWidgetElements.length) {
+        const el = currentWidgetElements[selectedWidgetElIndex];
+        wElText.value = el.content;
+        wElColor.value = el.color || '#ffffff';
+        wElSize.value = el.fontSize || 20;
+        wElText.disabled = false;
+        wElColor.disabled = false;
+        wElSize.disabled = false;
+        wElDelete.disabled = false;
+    } else {
+        wElText.value = '';
+        wElColor.value = '#ffffff';
+        wElSize.value = '';
+        wElText.disabled = true;
+        wElColor.disabled = true;
+        wElSize.disabled = true;
+        wElDelete.disabled = true;
+    }
+}
+
+document.getElementById('w-add-time').onclick = () => {
+    currentWidgetElements.push({type: 'text', content: '{time}', x: 50, y: 50, fontSize: 40, color: '#f8fafc', align: 'center'});
+    selectedWidgetElIndex = currentWidgetElements.length - 1;
+    renderWidgetCanvas();
+};
+document.getElementById('w-add-date').onclick = () => {
+    currentWidgetElements.push({type: 'text', content: '{date}', x: 50, y: 50, fontSize: 15, color: '#94a3b8', align: 'center'});
+    selectedWidgetElIndex = currentWidgetElements.length - 1;
+    renderWidgetCanvas();
+};
+document.getElementById('w-add-cpu').onclick = () => {
+    currentWidgetElements.push({type: 'text', content: 'CPU: {cpu}%', x: 50, y: 50, fontSize: 15, color: '#ef4444', align: 'center'});
+    selectedWidgetElIndex = currentWidgetElements.length - 1;
+    renderWidgetCanvas();
+};
+document.getElementById('w-add-ram').onclick = () => {
+    currentWidgetElements.push({type: 'text', content: 'RAM: {ram}%', x: 50, y: 50, fontSize: 15, color: '#3b82f6', align: 'center'});
+    selectedWidgetElIndex = currentWidgetElements.length - 1;
+    renderWidgetCanvas();
+};
+document.getElementById('w-add-text').onclick = () => {
+    currentWidgetElements.push({type: 'text', content: 'Text', x: 50, y: 50, fontSize: 20, color: '#ffffff', align: 'center'});
+    selectedWidgetElIndex = currentWidgetElements.length - 1;
+    renderWidgetCanvas();
+};
+
+wElText.oninput = (e) => {
+    if (selectedWidgetElIndex >= 0) {
+        currentWidgetElements[selectedWidgetElIndex].content = e.target.value;
+        renderWidgetCanvas();
+    }
+};
+wElColor.oninput = (e) => {
+    if (selectedWidgetElIndex >= 0) {
+        currentWidgetElements[selectedWidgetElIndex].color = e.target.value;
+        renderWidgetCanvas();
+    }
+};
+wElSize.oninput = (e) => {
+    if (selectedWidgetElIndex >= 0) {
+        currentWidgetElements[selectedWidgetElIndex].fontSize = parseInt(e.target.value) || 20;
+        renderWidgetCanvas();
+    }
+};
+wElDelete.onclick = () => {
+    if (selectedWidgetElIndex >= 0) {
+        currentWidgetElements.splice(selectedWidgetElIndex, 1);
+        selectedWidgetElIndex = -1;
+        renderWidgetCanvas();
+    }
+};
+
+btnSaveWidget.onclick = () => {
+    widgetModal.style.display = 'none';
+    
+    // Construct background payload
+    let bg = { type: 'solid', color: propBgColor.value };
+    if (propBgType.value === 'gradient') {
+        bg = { type: 'gradient', color1: propBgGrad1.value, color2: propBgGrad2.value };
+    }
+    
+    if (!config.pages[currentPage]) config.pages[currentPage] = {};
+    if (!config.pages[currentPage][activeRectKey]) config.pages[currentPage][activeRectKey] = {};
+    
+    config.pages[currentPage][activeRectKey].payload = {
+        background: bg,
+        elements: currentWidgetElements
+    };
+    saveActiveRectState();
+};
+btnCancelWidget.onclick = () => {
+    widgetModal.style.display = 'none';
+};
+
+// End Widget Editor
+
+async function generateIconImage(iconName, labelText, iconColor) {
     if (!iconName) return null;
     
     const canvas = document.createElement('canvas');
@@ -577,15 +923,8 @@ async function generateIconImage(iconName, labelText) {
     canvas.height = 256;
     const ctx = canvas.getContext('2d');
     
-    const gradient = ctx.createLinearGradient(0, 0, 0, 256);
-    gradient.addColorStop(0, '#1e293b');
-    gradient.addColorStop(1, '#0f172a');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 256, 256);
-    
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(2, 2, 252, 252);
+    // Transparente para que se vea el color/gradiente dibujado en el backend
+    ctx.clearRect(0, 0, 256, 256);
     
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = `<i data-lucide="${iconName}"></i>`;
@@ -596,7 +935,7 @@ async function generateIconImage(iconName, labelText) {
         svgNode.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
         svgNode.setAttribute('width', '128');
         svgNode.setAttribute('height', '128');
-        svgNode.setAttribute('stroke', '#f8fafc');
+        svgNode.setAttribute('stroke', iconColor || '#ffffff');
         
         const svgString = svgNode.outerHTML;
         const blob = new Blob([svgString], {type: 'image/svg+xml'});
@@ -615,7 +954,7 @@ async function generateIconImage(iconName, labelText) {
     }
     
     if (labelText) {
-        ctx.fillStyle = '#f8fafc';
+        ctx.fillStyle = iconColor || '#ffffff';
         ctx.font = '500 28px "Outfit", -apple-system, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(labelText, 128, 220);
@@ -648,7 +987,7 @@ function populateIconGrid(query = '') {
             div.onclick = async () => {
                 iconModal.style.display = 'none';
                 if (activeRectKey) {
-                    const path = await generateIconImage(kebabName, propLabel.value);
+                    const path = await generateIconImage(kebabName, propLabel.value, propIconColor.value);
                     if (!config.pages[currentPage]) config.pages[currentPage] = {};
                     if (!config.pages[currentPage][activeRectKey]) config.pages[currentPage][activeRectKey] = {};
                     
@@ -696,6 +1035,16 @@ async function saveActiveRectState() {
         }
     }
     
+    // Save Background Config
+    pageData[activeRectKey].background = {
+        type: propBgType.value,
+        color: propBgColor.value,
+        color1: propBgGrad1.value,
+        color2: propBgGrad2.value
+    };
+    
+    pageData[activeRectKey].icon_color = propIconColor.value;
+    
     // Auto-Icons & Labels logic
     const prevImage = pageData[activeRectKey].image;
     let targetIcon = pageData[activeRectKey].lucide_icon;
@@ -722,14 +1071,15 @@ async function saveActiveRectState() {
         else if (m === 'volumedown') targetIcon = 'volume-1';
         else if (m === 'volumemute') targetIcon = 'volume-x';
         needsGen = true;
-    } else if (targetIcon && pageData[activeRectKey].label !== propLabel.value) {
+    } else if (targetIcon && (pageData[activeRectKey].label !== propLabel.value || pageData[activeRectKey].last_color !== propIconColor.value)) {
         needsGen = true;
     }
     
     pageData[activeRectKey].label = propLabel.value;
+    pageData[activeRectKey].last_color = propIconColor.value;
     
     if (needsGen && targetIcon) {
-        const path = await generateIconImage(targetIcon, propLabel.value);
+        const path = await generateIconImage(targetIcon, propLabel.value, propIconColor.value);
         pageData[activeRectKey].image = path;
         pageData[activeRectKey].lucide_icon = targetIcon;
         propImagePreview.src = path;
@@ -765,6 +1115,38 @@ function setupEventListeners() {
     propAppSelect.addEventListener('change', saveActiveRectState);
     propPageSelect.addEventListener('change', saveActiveRectState);
     propMediaSelect.addEventListener('change', saveActiveRectState);
+    
+    // Background and Color styling
+    propIconColor.addEventListener('change', saveActiveRectState);
+    propBgColor.addEventListener('change', saveActiveRectState);
+    propBgGrad1.addEventListener('change', saveActiveRectState);
+    propBgGrad2.addEventListener('change', saveActiveRectState);
+    
+    propBgType.addEventListener('change', () => {
+        if (propBgType.value === 'solid') {
+            propBgSolidGroup.style.display = 'block';
+            propBgGradientGroup.style.display = 'none';
+        } else {
+            propBgSolidGroup.style.display = 'none';
+            propBgGradientGroup.style.display = 'flex';
+        }
+        saveActiveRectState();
+    });
+    
+    btnClearImage.addEventListener('click', () => {
+        if (!activeRectKey || !config.pages[currentPage] || !config.pages[currentPage][activeRectKey]) return;
+        delete config.pages[currentPage][activeRectKey].image;
+        delete config.pages[currentPage][activeRectKey].lucide_icon;
+        updatePropertiesPanel(); // refresh
+        saveActiveRectState();
+    });
+    
+    btnClearAction.addEventListener('click', () => {
+        if (!activeRectKey || !config.pages[currentPage] || !config.pages[currentPage][activeRectKey]) return;
+        delete config.pages[currentPage][activeRectKey];
+        updatePropertiesPanel();
+        renderCanvas();
+    });
 
     btnAddMacroStep.addEventListener('click', () => {
         currentMacroSteps.push({ type: 'text', payload: '' });
@@ -871,7 +1253,7 @@ function setupEventListeners() {
                         propImagePreview.style.display = 'block';
                     };
                     reader.readAsDataURL(file);
-                    renderCanvas();
+                    saveActiveRectState();
                 } catch (err) {
                     console.error("GIF Upload failed", err);
                 }
@@ -934,7 +1316,7 @@ function setupEventListeners() {
         config.pages[currentPage][activeRectKey].image = data.path;
         propImagePreview.src = base64Image;
         propImagePreview.style.display = 'block';
-        renderCanvas();
+        saveActiveRectState();
     });
 }
 

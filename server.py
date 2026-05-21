@@ -78,18 +78,14 @@ def key_handler(device_id, c, r, pressed):
 
 def active_app_monitor():
     last_app = None
-    last_minute = -1
     while True:
         try:
-            current_minute = time.localtime().tm_min
-            if current_minute != last_minute:
-                last_minute = current_minute
-                for device_id, controller in controllers.items():
-                    page_config = controller.config.get('pages', {}).get(controller.current_page, {})
-                    has_clock = any(action.get('type') == 'clock' for action in page_config.values())
-                    if has_clock:
-                        controller.render_screen(controller.config)
-                        
+            for device_id, controller in controllers.items():
+                page_config = controller.config.get('pages', {}).get(controller.current_page, {})
+                has_widget = any(action.get('type') in ('clock', 'widget') for action in page_config.values())
+                if has_widget:
+                    controller.render_screen(controller.config)
+                    
             cmd = ['osascript', '-e', 'tell application "System Events" to get name of first application process whose frontmost is true']
             result = subprocess.run(cmd, capture_output=True, text=True)
             current_app = result.stdout.strip()

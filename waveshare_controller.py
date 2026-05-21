@@ -213,24 +213,89 @@ class WaveshareController:
                         w, h = rect["width"], rect["height"]
                         x, y = rect["x"], rect["y"]
                         
-                        if action.get("type") == "clock":
+                        from PIL import ImageDraw
+                        bg_config = action.get("background")
+                        if bg_config:
+                            if bg_config.get("type") == "solid":
+                                bg_color = bg_config.get("color", "#0f172a")
+                                draw_bg = Image.new("RGB", (w, h), bg_color)
+                                screen.paste(draw_bg, (x, y))
+                            elif bg_config.get("type") == "gradient":
+                                color1 = bg_config.get("color1", "#0f172a")
+                                color2 = bg_config.get("color2", "#1e293b")
+                                draw_bg = Image.new("RGB", (w, h), color1)
+                                try:
+                                    r1, g1, b1 = int(color1[1:3], 16), int(color1[3:5], 16), int(color1[5:7], 16)
+                                    r2, g2, b2 = int(color2[1:3], 16), int(color2[3:5], 16), int(color2[5:7], 16)
+                                    bg_draw = ImageDraw.Draw(draw_bg)
+                                    for y_grad in range(h):
+                                        r = int(r1 + (r2 - r1) * y_grad / h)
+                                        g = int(g1 + (g2 - g1) * y_grad / h)
+                                        b = int(b1 + (b2 - b1) * y_grad / h)
+                                        bg_draw.line([(0, y_grad), (w, y_grad)], fill=(r,g,b))
+                                except:
+                                    pass
+                                screen.paste(draw_bg, (x, y))
+                        
+                        if action.get("type") in ("clock", "widget"):
                             import time
+                            import psutil
                             from PIL import ImageDraw, ImageFont
-                            try:
-                                font_large = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", int(h*0.4))
-                                font_small = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", int(h*0.15))
-                            except:
-                                font_large = ImageFont.load_default()
-                                font_small = ImageFont.load_default()
+                            
+                            payload = action.get("payload", {})
+                            if not isinstance(payload, dict) or action.get("type") == "clock":
+                                payload = {
+                                    "background": {"type": "solid", "color": "#0f172a"},
+                                    "elements": [
+                                        {"type": "text", "content": "{time}", "x": 50, "y": 40, "fontSize": int(h*0.4), "color": "#f8fafc", "align": "center"},
+                                        {"type": "text", "content": "{date}", "x": 50, "y": 75, "fontSize": int(h*0.15), "color": "#94a3b8", "align": "center"}
+                                    ]
+                                }
                                 
-                            icon = Image.new('RGB', (w, h), color=(15, 23, 42))
+                            bg_config = payload.get("background", {"type": "solid", "color": "#0f172a"})
+                            if bg_config.get("type") == "gradient":
+                                color1 = bg_config.get("color1", "#0f172a")
+                                color2 = bg_config.get("color2", "#1e293b")
+                                icon = Image.new('RGB', (w, h), color=color1)
+                                draw = ImageDraw.Draw(icon)
+                                try:
+                                    r1, g1, b1 = int(color1[1:3], 16), int(color1[3:5], 16), int(color1[5:7], 16)
+                                    r2, g2, b2 = int(color2[1:3], 16), int(color2[3:5], 16), int(color2[5:7], 16)
+                                    for y_grad in range(h):
+                                        r = int(r1 + (r2 - r1) * y_grad / h)
+                                        g = int(g1 + (g2 - g1) * y_grad / h)
+                                        b = int(b1 + (b2 - b1) * y_grad / h)
+                                        draw.line([(0, y_grad), (w, y_grad)], fill=(r,g,b))
+                                except:
+                                    pass
+                            else:
+                                icon = Image.new('RGB', (w, h), color=bg_config.get("color", "#0f172a"))
+                                
                             draw = ImageDraw.Draw(icon)
                             
-                            current_time = time.strftime("%H:%M")
-                            current_date = time.strftime("%d %b")
-                            
-                            draw.text((w/2, h/2 - h*0.1), current_time, fill=(248, 250, 252), anchor="mm", font=font_large)
-                            draw.text((w/2, h/2 + h*0.25), current_date, fill=(148, 163, 184), anchor="mm", font=font_small)
+                            for el in payload.get("elements", []):
+                                if el.get("type") == "text":
+                                    content = el.get("content", "")
+                                    if "{time}" in content: content = content.replace("{time}", time.strftime("%H:%M"))
+                                    if "{date}" in content: content = content.replace("{date}", time.strftime("%d %b"))
+                                    if "{cpu}" in content: content = content.replace("{cpu}", str(int(psutil.cpu_percent(interval=None))))
+                                    if "{ram}" in content: content = content.replace("{ram}", str(int(psutil.virtual_memory().percent)))
+                                    
+                                    f_size = el.get("fontSize", 20)
+                                    try:
+                                        font = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", int(f_size))
+                                    except:
+                                        font = ImageFont.load_default()
+                                        
+                                    abs_x = w * (el.get("x", 50) / 100.0)
+                                    abs_y = h * (el.get("y", 50) / 100.0)
+                                    
+                                    align = el.get("align", "center")
+                                    anchor = "mm"
+                                    if align == "left": anchor = "lm"
+                                    elif align == "right": anchor = "rm"
+                                    
+                                    draw.text((abs_x, abs_y), content, fill=el.get("color", "#ffffff"), anchor=anchor, font=font)
                             
                             screen.paste(icon, (x, y))
                             continue
