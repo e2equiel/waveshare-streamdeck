@@ -52,7 +52,11 @@ const i18n = {
         macroSteps: "Macro Steps",
         btnAddMacroStep: "+ Add Action",
         actionDelay: "Delay (pause)",
-        payloadDelay: "e.g. 1500 (for 1.5s)"
+        payloadDelay: "e.g. 1500 (for 1.5s)",
+        smartProfilesTitle: "Smart Profiles",
+        smartProfilesDesc: "Automatically switch to a specific page when a macOS application becomes active.",
+        btnAddProfile: "+ Add Smart Profile",
+        appPlaceholder: "App Name (e.g. Safari)"
     },
     es: {
         appTitle: "Configuración Stream Deck",
@@ -107,13 +111,17 @@ const i18n = {
         macroSteps: "Pasos de Macro",
         btnAddMacroStep: "+ Agregar Acción",
         actionDelay: "Retraso (pausa)",
-        payloadDelay: "ej. 1500 (para 1.5s)"
+        payloadDelay: "ej. 1500 (para 1.5s)",
+        smartProfilesTitle: "Perfiles Inteligentes",
+        smartProfilesDesc: "Cambia automáticamente a una página específica cuando una aplicación en macOS se vuelve activa.",
+        btnAddProfile: "+ Agregar Perfil",
+        appPlaceholder: "App (ej. Safari)"
     }
 };
 
 let currentLang = 'en';
 
-let config = { pages: { main: {} }, settings: { brightness: 50 } };
+let config = { pages: { main: {} }, settings: { brightness: 50 }, smart_profiles: {} };
 let layout = { width: 896, height: 304, rects: [] };
 let apps = [];
 let currentPage = "main";
@@ -159,6 +167,10 @@ const closeIconModal = document.getElementById("close-icon-modal");
 const iconSearch = document.getElementById("icon-search");
 const iconGrid = document.getElementById("icon-grid");
 
+// Smart Profiles DOM
+const smartProfilesList = document.getElementById("smart-profiles-list");
+const btnAddProfile = document.getElementById("btn-add-profile");
+
 // i18n Translator
 function applyTranslations() {
     const t = i18n[currentLang];
@@ -173,6 +185,7 @@ function applyTranslations() {
     if (activeRectKey) updatePropertiesPanelTitle();
     updatePayloadVisibility();
     if (activeRectKey && propAction.value === 'multi_action') renderMacroSteps();
+    renderSmartProfiles();
 }
 
 langSelect.addEventListener('change', (e) => {
@@ -189,6 +202,7 @@ async function init() {
         await fetchConfig();
         renderPagesList();
         renderCanvas();
+        renderSmartProfiles();
     }
     setupEventListeners();
 }
@@ -241,7 +255,75 @@ async function fetchConfig() {
     config = await res.json();
     if (!config.pages) config.pages = { main: {} };
     if (!config.settings) config.settings = { brightness: 50 };
+    if (!config.smart_profiles) config.smart_profiles = {};
     brightnessSlider.value = config.settings.brightness;
+}
+
+function renderSmartProfiles() {
+    if (!smartProfilesList) return;
+    if (!config.smart_profiles) config.smart_profiles = {};
+    
+    smartProfilesList.innerHTML = '';
+    const t = i18n[currentLang];
+    const profileKeys = Object.keys(config.smart_profiles);
+    
+    profileKeys.forEach(appName => {
+        const targetPage = config.smart_profiles[appName];
+        const div = document.createElement('div');
+        div.className = 'macro-step';
+        
+        const remove = document.createElement('span');
+        remove.className = 'remove-step';
+        remove.innerHTML = '&times;';
+        remove.onclick = () => {
+            delete config.smart_profiles[appName];
+            renderSmartProfiles();
+        };
+        div.appendChild(remove);
+        
+        const appSelect = document.createElement('select');
+        let found = false;
+        apps.forEach(app => {
+            const opt = document.createElement('option');
+            opt.value = app.name;
+            opt.textContent = app.name;
+            if (app.name === appName) found = true;
+            appSelect.appendChild(opt);
+        });
+        
+        if (!found && appName) {
+            const opt = document.createElement('option');
+            opt.value = appName;
+            opt.textContent = appName + " (Custom)";
+            appSelect.appendChild(opt);
+        }
+        
+        appSelect.value = appName;
+        appSelect.onchange = (e) => {
+            const newName = e.target.value.trim();
+            if (newName && newName !== appName) {
+                config.smart_profiles[newName] = config.smart_profiles[appName];
+                delete config.smart_profiles[appName];
+                renderSmartProfiles();
+            }
+        };
+        div.appendChild(appSelect);
+        
+        const pageSelect = document.createElement('select');
+        for (const pageName in config.pages) {
+            const opt = document.createElement('option');
+            opt.value = pageName;
+            opt.textContent = pageName;
+            pageSelect.appendChild(opt);
+        }
+        pageSelect.value = targetPage;
+        pageSelect.onchange = (e) => {
+            config.smart_profiles[appName] = e.target.value;
+        };
+        div.appendChild(pageSelect);
+        
+        smartProfilesList.appendChild(div);
+    });
 }
 
 function renderPagesList() {
@@ -270,6 +352,7 @@ function renderPagesList() {
                     renderPagesList();
                     renderCanvas();
                     updatePropertiesPanel();
+                    renderSmartProfiles();
                 }
             };
             delBtn.onmouseover = () => delBtn.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
@@ -608,6 +691,7 @@ async function saveActiveRectState() {
             if (!config.pages[targetPage]) {
                 config.pages[targetPage] = {}; // Auto-create folder page
                 renderPagesList();
+                renderSmartProfiles();
             }
         }
     }
@@ -688,6 +772,20 @@ function setupEventListeners() {
         renderMacroSteps();
     });
 
+    if (btnAddProfile) {
+        btnAddProfile.addEventListener('click', () => {
+            const defaultApp = apps.length > 0 ? apps[0].name : ("NewApp" + Date.now());
+            let tempName = defaultApp;
+            let counter = 1;
+            while(config.smart_profiles[tempName]) {
+                tempName = defaultApp + " " + counter;
+                counter++;
+            }
+            config.smart_profiles[tempName] = "main";
+            renderSmartProfiles();
+        });
+    }
+
     btnChooseIcon.addEventListener('click', () => {
         iconModal.style.display = 'block';
         populateIconGrid('');
@@ -705,6 +803,7 @@ function setupEventListeners() {
             config.pages[name] = {};
             newPageName.value = '';
             renderPagesList();
+            renderSmartProfiles();
         }
     });
 
@@ -730,6 +829,7 @@ function setupEventListeners() {
             updatePropertiesPanel();
             renderPagesList();
             renderCanvas();
+            renderSmartProfiles();
         }
     });
 

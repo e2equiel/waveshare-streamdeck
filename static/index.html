@@ -124,12 +124,19 @@
                     <button id="btn-new-page" class="btn secondary icon-btn">+</button>
                 </div>
                 
-                <hr>
-                
-                <h2 data-i18n="settingsTitle">Settings</h2>
-                <div class="setting-group">
-                    <label data-i18n="brightnessLabel">Brightness</label>
-                    <input type="range" id="brightness-slider" min="0" max="100" value="50">
+                <div id="settings-panel" class="tab-pane">
+                    <h2 data-i18n="settingsTitle">Settings</h2>
+                    <div class="form-group">
+                        <label data-i18n="brightnessLabel">Brightness</label>
+                        <input type="range" id="brightness-slider" min="0" max="100" value="50">
+                    </div>
+
+                    <h3 data-i18n="smartProfilesTitle" style="margin-top:20px; margin-bottom: 10px; font-size: 1.1rem;">Smart Profiles</h3>
+                    <p data-i18n="smartProfilesDesc" style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 15px;">
+                        Automatically switch to a specific page when a macOS application becomes active.
+                    </p>
+                    <div id="smart-profiles-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom: 10px; max-height: 250px; overflow-y: auto; padding-right: 5px;"></div>
+                    <button id="btn-add-profile" class="btn secondary" style="width: 100%; font-size: 0.9rem;" data-i18n="btnAddProfile">+ Add Smart Profile</button>
                 </div>
                 
                 <div class="sidebar-footer">

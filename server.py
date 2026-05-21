@@ -11,6 +11,9 @@ import base64
 import uuid
 import json
 import shutil
+import threading
+import time
+import subprocess
 from PIL import Image
 
 from waveshare_controller import WaveshareController, get_mac_app_icon_bytes
@@ -73,6 +76,47 @@ def key_handler(device_id, c, r, pressed):
             # We pass the single action to executor since executor doesn't need to know pagination
             executor.execute(f"{c}_{r}", page_config)
 
+def active_app_monitor():
+    last_app = None
+    last_minute = -1
+    while True:
+        try:
+            current_minute = time.localtime().tm_min
+            if current_minute != last_minute:
+                last_minute = current_minute
+                for device_id, controller in controllers.items():
+                    page_config = controller.config.get('pages', {}).get(controller.current_page, {})
+                    has_clock = any(action.get('type') == 'clock' for action in page_config.values())
+                    if has_clock:
+                        controller.render_screen(controller.config)
+                        
+            cmd = ['osascript', '-e', 'tell application "System Events" to get name of first application process whose frontmost is true']
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            current_app = result.stdout.strip()
+            
+            if current_app and current_app != last_app:
+                last_app = current_app
+                for device_id, controller in controllers.items():
+                    if 'smart_profiles' in controller.config:
+                        target_page = controller.config['smart_profiles'].get(current_app)
+                        
+                        if target_page and target_page in controller.config.get('pages', {}):
+                            logger.info(f"Smart Profile triggered: {current_app} -> switching to page {target_page}")
+                            controller.current_page = target_page
+                            controller.navigation_stack = []
+                            controller.render_screen(controller.config)
+                        else:
+                            # Revert to main only if we were actively stuck on a smart profile page
+                            active_profile_pages = list(controller.config['smart_profiles'].values())
+                            if controller.current_page in active_profile_pages and controller.current_page != 'main':
+                                logger.info(f"App changed to {current_app} (no profile), reverting to main")
+                                controller.current_page = 'main'
+                                controller.navigation_stack = []
+                                controller.render_screen(controller.config)
+        except Exception as e:
+            logger.error(f"App monitor error: {e}")
+        time.sleep(2)
+
 def on_connected(device_id):
     logger.info(f"Device {device_id} connected, re-rendering screen...")
     controller = controllers.get(device_id)
@@ -113,6 +157,8 @@ def startup_event():
             logger.info(f"Connected to {port}")
         else:
             logger.warning(f"Failed to connect to {port}")
+            
+    threading.Thread(target=active_app_monitor, daemon=True).start()
 
 @app.on_event("shutdown")
 def shutdown_event():

@@ -213,7 +213,32 @@ class WaveshareController:
                         w, h = rect["width"], rect["height"]
                         x, y = rect["x"], rect["y"]
                         
-                        img_path = action["image"]
+                        if action.get("type") == "clock":
+                            import time
+                            from PIL import ImageDraw, ImageFont
+                            try:
+                                font_large = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", int(h*0.4))
+                                font_small = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", int(h*0.15))
+                            except:
+                                font_large = ImageFont.load_default()
+                                font_small = ImageFont.load_default()
+                                
+                            icon = Image.new('RGB', (w, h), color=(15, 23, 42))
+                            draw = ImageDraw.Draw(icon)
+                            
+                            current_time = time.strftime("%H:%M")
+                            current_date = time.strftime("%d %b")
+                            
+                            draw.text((w/2, h/2 - h*0.1), current_time, fill=(248, 250, 252), anchor="mm", font=font_large)
+                            draw.text((w/2, h/2 + h*0.25), current_date, fill=(148, 163, 184), anchor="mm", font=font_small)
+                            
+                            screen.paste(icon, (x, y))
+                            continue
+                            
+                        img_path = action.get("image")
+                        if not img_path:
+                            continue
+                            
                         cache_key = (img_path, w, h)
                         
                         # Use cached processed image if available
